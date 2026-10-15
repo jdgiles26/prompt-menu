@@ -11,6 +11,31 @@ func testRunCapturesOutput() throws {
     checkEqual(try run(Invocation(executable: chatty, arguments: [], environment: [:]), timeout: 20).count, 3000 * 47)
 }
 
+func testStreaming() throws {
+    let dir = try makeTempFolder()
+    let exe = try makeScript("mlx_lm.generate", in: dir, #"""
+    echo '=========='; printf 'ROLE: '; sleep 0.3; printf 'agent\n'; sleep 0.3
+    echo 'STEPS: 1'; echo '=========='; echo 'Peak memory: 1.9 GB'
+    """#)
+    var updates: [String] = []
+    let lock = NSLock()
+    let final = try rewrite("fix it", config: BackendConfig(backend: .mlx, model: "m", executable: exe), searchDirs: [],
+                            timeout: 10, progress: { text in lock.lock(); updates.append(text); lock.unlock() })
+    checkEqual(final, "ROLE: agent\nSTEPS: 1")
+    check(updates.count >= 2, "expected several progress updates, got \(updates)")
+    check(updates.first.map { $0.hasPrefix("ROLE:") && $0.count < final.count } ?? false, "the first update should be partial: \(updates)")
+    check(!updates.contains { $0.contains("==") || $0.contains("Peak") }, "updates should be cleaned: \(updates)")
+}
+
+// A runner that leaves a child holding stdout open mustn't hang the rewrite after it exits.
+func testRunnerChildKeepsPipeOpen() throws {
+    let dir = try makeTempFolder()
+    let exe = try makeScript("forks", in: dir, "echo done; (sleep 30 &) ; exit 0")
+    let start = Date()
+    checkEqual(try run(Invocation(executable: exe, arguments: [], environment: [:]), timeout: 10), "done\n")
+    check(Date().timeIntervalSince(start) < 5, "took \(Date().timeIntervalSince(start))s")
+}
+
 func testRunFailures() throws {
     let dir = try makeTempFolder()
     let failing = try makeScript("failing", in: dir, "echo 'model not found' >&2; exit 3")

@@ -65,6 +65,12 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("runner failures", testRunFailures),
     ("runner timeout", testRunTimeout),
     ("whole rewrite", testRewritePipeline),
+    ("streaming", testStreaming),
+    ("runner child keeps pipe open", testRunnerChildKeepsPipeOpen),
+    ("custom system prompt", testCustomSystemPrompt),
+    ("no network code", testNoNetworkCode),
+    ("no entitlements", testNoEntitlementsOrPermissions),
+    ("docs cover every runner", testDocsCoverEveryRunner),
     ("settings", testSettings),
     ("Services entry", testServicesEntry),
 ]

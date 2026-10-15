@@ -32,6 +32,10 @@ func testCleanOutput() throws {
                "ROLE: dev")
     // Reasoning models think out loud first.
     checkEqual(cleanOutput("<think>\nThe user wants…\n</think>\n\nROLE: dev"), "ROLE: dev")
+    // While streaming, thinking that hasn't finished yet shows nothing.
+    checkEqual(cleanOutput("<think>\nThe user wa"), "")
+    // While streaming, mlx_lm.generate's first separator has arrived but the second hasn't.
+    checkEqual(cleanOutput("==========\nROLE: d"), "ROLE: d")
     // llama.cpp marks the end.
     checkEqual(cleanOutput("ROLE: dev\n\n[end of text]\n"), "ROLE: dev")
     // A reply wrapped whole in one code fence is unwrapped; fences inside are kept.

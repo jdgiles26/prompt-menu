@@ -30,6 +30,8 @@ final class SettingsWindowController: NSWindowController {
         hint.textColor = .secondaryLabelColor
         hint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.isSelectable = true
+        // Re-check the runner path as it's typed.
+        NotificationCenter.default.addObserver(self, selector: #selector(updateHints), name: NSControl.textDidChangeNotification, object: runnerField)
 
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: "Runner:"), backendPopup],
@@ -45,7 +47,7 @@ final class SettingsWindowController: NSWindowController {
         tokensField.widthAnchor.constraint(equalToConstant: 80).isActive = true
 
         let note = NSTextField(wrappingLabelWithString:
-            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere.")
+            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere. To change the instructions the model gets: defaults write local.promptmenu systemPrompt \"…\"")
         let tryIt = NSButton(title: "Try It", target: self, action: #selector(tryIt(_:)))
         let save = NSButton(title: "Save", target: self, action: #selector(save(_:)))
         save.keyEquivalent = "\r"
@@ -80,9 +82,18 @@ final class SettingsWindowController: NSWindowController {
         updateHints()
     }
 
-    private func updateHints() {
+    @objc private func updateHints() {
         let backend = selectedBackend
         runnerField.placeholderString = "Search PATH and Homebrew for \(backend.executableName)"
+        var found = "Runner: "
+        let runner = (runnerField.stringValue.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath
+        if !runner.isEmpty {
+            found += FileManager.default.isExecutableFile(atPath: runner) ? "✓ \(runner)" : "✗ no program at \(runner)"
+        } else {
+            found += findExecutable(named: backend.executableName, in: standardSearchDirs()).map { "✓ found \($0)" }
+                ?? "✗ \(backend.executableName) not found"
+        }
+        defer { hint.stringValue = found + "\n" + hint.stringValue }
         switch backend {
         case .mlx:
             modelField.placeholderString = defaultMLXModel

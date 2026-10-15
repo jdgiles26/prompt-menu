@@ -11,6 +11,9 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
     private let againButton = NSButton(title: "Try Again", target: nil, action: nil)
     private var running: Process?
     private var generation = 0
+    private var timer: Timer?
+    private var startedAt = Date()
+    private var runningStatus = ""
     var onClose: (() -> Void)?
 
     init(source: String) {
@@ -88,12 +91,25 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
         let mine = generation
         let config = loadConfig()
         let model = config.model.isEmpty ? (config.executable as NSString?)?.lastPathComponent ?? "" : config.model
-        setRunning(true, status: "Rewriting with \(config.backend.displayName)\(model.isEmpty ? "" : " · \((model as NSString).lastPathComponent)")…")
+        runningStatus = "Rewriting with \(config.backend.displayName)\(model.isEmpty ? "" : " · \((model as NSString).lastPathComponent)")"
+        setRunning(true, status: runningStatus + "…")
         textView.string = ""
+        // Loading a model takes a while before the first word; show that something is happening.
+        startedAt = Date()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.status.stringValue = "\(self.runningStatus)… \(Int(Date().timeIntervalSince(self.startedAt)))s"
+        }
         let text = source
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try rewrite(text, config: config, started: { process in
                 DispatchQueue.main.async { if mine == self.generation { self.running = process } }
+            }, progress: { soFar in
+                DispatchQueue.main.async {
+                    guard mine == self.generation, self.running != nil else { return }
+                    self.textView.string = soFar
+                    self.textView.scrollToEndOfDocument(nil)
+                }
             }) }
             DispatchQueue.main.async {
                 guard mine == self.generation else { return }
@@ -101,7 +117,9 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
                 switch result {
                 case .success(let prompt):
                     self.textView.string = prompt
-                    self.setRunning(false, status: "Edit if needed, then copy.")
+                    self.textView.scrollToBeginningOfDocument(nil)
+                    let seconds = Int(Date().timeIntervalSince(self.startedAt))
+                    self.setRunning(false, status: "Done in \(seconds)s. Edit if needed, then copy (⌘↩).")
                     self.window?.makeFirstResponder(self.textView)
                 case .failure(let error):
                     self.textView.string = error.localizedDescription
@@ -112,6 +130,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
     }
 
     private func setRunning(_ isRunning: Bool, status text: String, failed: Bool = false) {
+        if !isRunning { timer?.invalidate(); timer = nil }
         isRunning ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         spinner.isHidden = !isRunning
         status.stringValue = text
@@ -127,14 +146,24 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
         window?.performClose(nil)
     }
 
-    @objc private func tryAgain(_ sender: Any?) { start() }
+    @objc private func tryAgain(_ sender: Any?) {
+        running?.terminate()
+        running = nil
+        start()
+    }
 
     @objc private func closePanel(_ sender: Any?) { window?.performClose(nil) }
 
     func windowWillClose(_ notification: Notification) {
-        generation += 1 // Ignore whatever the running model returns.
+        stop()
+        onClose?()
+    }
+
+    // Stops the model, if one is running, and ignores whatever it still returns.
+    func stop() {
+        generation += 1
+        timer?.invalidate()
         running?.terminate()
         running = nil
-        onClose?()
     }
 }

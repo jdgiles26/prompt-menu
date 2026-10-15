@@ -35,6 +35,8 @@ struct BackendConfig: Equatable {
     var executable: String? = nil
     var maxTokens = 1024
     var temperature = 0.3
+    // What the model is told to do; agentSystemPrompt unless the user changed it.
+    var systemPrompt = agentSystemPrompt
 }
 
 // One run of a model runner.
@@ -63,23 +65,24 @@ func invocation(for config: BackendConfig, input: String, searchDirs: [String]) 
     case .mlx:
         return Invocation(executable: exe, arguments: [
             "--model", model,
-            "--system-prompt", agentSystemPrompt,
+            "--system-prompt", config.systemPrompt,
             "--prompt", input,
             "--max-tokens", tokens,
             "--temp", temp,
-            "--verbose", "False",
-        ], environment: ["HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"])
+            // Prints tokens as they come (between "==========" lines, then stats); cleanOutput drops the rest.
+            "--verbose", "True",
+        ], environment: ["HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "PYTHONUNBUFFERED": "1"])
     case .llamafile:
         // llamafiles are Actually Portable Executables: a shell script header that posix_spawn
         // refuses, so let the shell start them, as running one from Terminal does.
         var args = [exe]
         if !model.isEmpty { args += ["-m", model] }
-        args += ["--cli", "-p", combinedPrompt(input), "-n", tokens, "--temp", temp]
+        args += ["--cli", "-p", combinedPrompt(input, systemPrompt: config.systemPrompt), "-n", tokens, "--temp", temp]
         return Invocation(executable: "/bin/sh", arguments: args, environment: [:])
     case .llamaCpp:
         return Invocation(executable: exe, arguments: [
             "-m", model,
-            "-sys", agentSystemPrompt,
+            "-sys", config.systemPrompt,
             "-p", input,
             "-cnv", "-st", "--no-display-prompt", "--log-disable",
             "-n", tokens, "--temp", temp,

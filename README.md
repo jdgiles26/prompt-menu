@@ -1,47 +1,94 @@
 # Prompt Menu
 
-Highlight rough notes in any Mac app, right-click → **Services → Rewrite as Agent Prompt**, and get them back as a structured prompt for an AI coding or research agent:
-ROLE, OBJECTIVE, CONTEXT, STEPS, CONSTRAINTS and DONE WHEN, with `[CONFIRM: …]` where something's missing.
+**Turn rough notes into a prompt an AI agent can act on, from any Mac app, with a model that runs on your Mac.**
 
-The model runs on your Mac. Prompt Menu has no network code: it starts a local model runner as a command-line program, reads what it prints, and shows the result in a dialog you can edit and copy.
+Highlight text anywhere (Notes, Mail, Slack, a browser, your editor), right-click → **Services → Rewrite as Agent Prompt**. A dialog opens and the rewritten prompt streams in:
 
-## Runners
+```text
+ROLE: …          who the agent should act as
+OBJECTIVE: …     the exact outcome wanted
+CONTEXT: …       facts from your text, nothing invented
+STEPS: …         a numbered plan, ending with checking the result
+CONSTRAINTS: …   what not to touch
+DONE WHEN: …     checkable signs it's finished
+```
 
-| Runner | Install | Model setting |
-|---|---|---|
-| **MLX** (default, Apple Silicon) | `pip install mlx-lm` | A Hugging Face repo id you've already downloaded, e.g. `mlx-community/Llama-3.2-3B-Instruct-4bit`. Download it once with `mlx_lm.generate --model <id> --prompt hi`. Prompt Menu runs it with `HF_HUB_OFFLINE=1`, so it never downloads anything itself. |
-| **llamafile** (Mozilla.ai, 0.10+) | Download from [mozilla-ai/llamafile](https://github.com/mozilla-ai/llamafile/releases) | A `.gguf` path, or leave empty and set a model-bundled `.llamafile` as the runner path. Runs in `--cli` mode. |
-| **llama.cpp** | `brew install llama.cpp` | A `.gguf` path. Runs `llama-completion` for a single turn. |
+Wherever your notes leave something out, the model writes `[CONFIRM: what to ask]` instead of guessing. Edit the result in the dialog, then **Copy** (⌘↩).
 
-Prompt Menu looks for runners on your `PATH`, in Homebrew's folders, `~/.local/bin` and pip's `~/Library/Python/*/bin`. Set a full path in settings if yours is elsewhere.
+- 🔒 **Local only.** No network code at all, and a test fails the build if any appears. The model runs as a local program.
+- 🧩 **Your choice of runner:** Apple **MLX**, Mozilla.ai's **llamafile**, or **llama.cpp**.
+- 🪶 **Small.** About 750 lines of Swift, built with the Command Line Tools. No Xcode project, no dependencies.
+
+## Requirements
+
+- macOS 13 or later; Apple Silicon recommended (MLX needs it)
+- Xcode Command Line Tools: `xcode-select --install`
+- One runner and one model (see below)
 
 ## Install
 
-Needs macOS 13 or later and the Xcode Command Line Tools (`xcode-select --install`).
-
 ```sh
-scripts/install.sh              # builds into ~/Applications and registers the Services item
-scripts/install.sh --uninstall
+git clone https://github.com/jdgiles26/prompt-menu.git
+cd prompt-menu
+scripts/install.sh               # builds into ~/Applications and registers the Services item
 ```
 
-Open **Prompt Menu** from ~/Applications to pick a runner and model, or click **Try It**. Settings can also be changed with `defaults write local.promptmenu <key> <value>` (`backend`, `model`, `executable`, `maxTokens`, `temperature`).
+Then open **Prompt Menu** from `~/Applications` to pick a runner and model, and click **Try It**.
 
-If the item doesn't show under Services, turn it on in System Settings → Keyboard → Keyboard Shortcuts → Services → Text. You can give it a shortcut there too.
+To remove it: `scripts/install.sh --uninstall`
 
-## How it works
+If **Rewrite as Agent Prompt** doesn't appear under Services, turn it on in **System Settings → Keyboard → Keyboard Shortcuts → Services → Text**. You can give it a keyboard shortcut there too.
 
-- `Sources/Core` has no UI and is fully tested: the system prompt and input limits (`Prompt.swift`), the command line for each runner (`Backend.swift`), running it with a timeout (`Runner.swift`), and the settings (`Settings.swift`).
-- `Sources/PromptMenu` is the app: the Services provider (`Service.swift`), the result dialog (`ResultPanel.swift`) and the settings window. It's a menu-bar-less app that quits when its last window closes, so no model stays in memory.
-- `Resources/App-Info.plist` declares the Services item. `scripts/build.sh` compiles with plain `swiftc`, so no Xcode project is needed.
+## Runners
 
-## Tests
+| Runner | Program | Install | Model setting |
+|---|---|---|---|
+| **MLX** (default) | `mlx_lm.generate` | `pip install mlx-lm` | A Hugging Face repo id that's already downloaded, e.g. `mlx-community/Llama-3.2-3B-Instruct-4bit`. Download once with `mlx_lm.generate --model <id> --prompt hi`. |
+| **llamafile** 0.10+ | `llamafile` | [mozilla-ai/llamafile releases](https://github.com/mozilla-ai/llamafile/releases) | A `.gguf` path, or leave empty and set a model-bundled `.llamafile` as the runner path. |
+| **llama.cpp** | `llama-completion` | `brew install llama.cpp` | A `.gguf` path to an instruct model. |
+
+Prompt Menu looks for the program on your `PATH`, in Homebrew's folders, `~/.local/bin`, `~/bin` and pip's `~/Library/Python/*/bin`. The settings window shows what it found; set a full path if yours is elsewhere.
+
+**Which model?** On an 8 GB Mac, a 3B–4B instruct model at 4-bit (about 2 GB) is the practical size: text starts streaming in about 8 seconds and a full prompt takes 15–20. With 16 GB or more, 7B–9B models follow the outline noticeably better.
+
+**Status:** MLX is tested end to end with a real model. The llamafile and llama.cpp command lines are covered by tests but haven't yet been run against real models; reports welcome.
+
+MLX runs with `HF_HUB_OFFLINE=1`, so Prompt Menu never downloads a model itself. Only what's already on disk is used.
+
+## Settings
+
+The settings window covers the runner, runner path, model and max tokens. Everything is also available from Terminal:
 
 ```sh
-scripts/test.sh
+defaults write local.promptmenu backend mlx            # mlx | llamafile | llama.cpp
+defaults write local.promptmenu model mlx-community/Qwen3-4B-4bit
+defaults write local.promptmenu executable /opt/homebrew/bin/llama-completion   # empty = search
+defaults write local.promptmenu maxTokens -int 1024    # 16–8192
+defaults write local.promptmenu temperature -float 0.3 # 0–2
+defaults write local.promptmenu systemPrompt "Rewrite the text as …"   # empty = built-in prompt
 ```
 
-They run against fake runner scripts, so they need no model. The build layout, the test runner and parts of the app shell are adapted from [Finder Menu](https://github.com/nikgrbn/finder-menu).
+## Privacy
 
-## Why not in-process MLX?
+- No network code: the build's tests scan `Sources/` for networking APIs and URLs.
+- No entitlements, no permissions requested, no telemetry, no logs of your text.
+- Your text goes to the runner as a command-line argument and stays on this Mac. The app quits when its last window closes, so no model stays in memory.
 
-[mlx-swift](https://github.com/ml-explore/mlx-swift) could run models inside the app, but its Metal shaders only build with full Xcode (`xcodebuild`), and this project builds with the Command Line Tools alone. It's a good next step if you have Xcode installed: it would remove the Python dependency and keep the model loaded between rewrites.
+## Documentation
+
+| Doc | For |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it's built: modules, types, decisions |
+| [docs/FLOW_MAPS.md](docs/FLOW_MAPS.md) | Diagrams of every flow: service call, rewrite, streaming, errors, settings |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, testing, debugging, releasing |
+| [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repo |
+| [docs/AGENTIC_DEVELOPMENT.md](docs/AGENTIC_DEVELOPMENT.md) | Guardrails, what to touch and not touch, and the change-impact map |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
+
+## Credits
+
+The build layout, test runner and parts of the app shell are adapted from [Finder Menu](https://github.com/nikgrbn/finder-menu) by nikgrbn (MIT).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

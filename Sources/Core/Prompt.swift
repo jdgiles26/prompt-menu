@@ -57,14 +57,17 @@ func prepareInput(_ text: String) throws -> String {
 }
 
 // For runners that take a single prompt and no separate system prompt.
-func combinedPrompt(_ input: String) -> String {
-    "\(agentSystemPrompt)\n\nText to rewrite:\n\(input)"
+func combinedPrompt(_ input: String, systemPrompt: String = agentSystemPrompt) -> String {
+    "\(systemPrompt)\n\nText to rewrite:\n\(input)"
 }
 
-// The model's reply without the runner's noise around it.
+// The model's reply without the runner's noise around it. Also called on partial output while it
+// streams, so it must be cheap and must never show half of a marker it would later remove.
 func cleanOutput(_ raw: String) -> String {
     var text = raw.replacingOccurrences(of: "\u{1B}\\[[0-9;?]*[A-Za-z]", with: "", options: .regularExpression)
     text = text.replacingOccurrences(of: "(?s)<think>.*?</think>", with: "", options: .regularExpression)
+    // Still thinking (mid-stream): nothing to show yet.
+    text = text.replacingOccurrences(of: "(?s)<think>.*$", with: "", options: .regularExpression)
     // mlx_lm.generate's separators and stats, and llama.cpp's end marker.
     let noise = ["^=+$", "^Prompt: \\d+ tokens", "^Generation: \\d+ tokens", "^Peak memory:", "^\\[end of text\\]$"]
     text = text.components(separatedBy: "\n")

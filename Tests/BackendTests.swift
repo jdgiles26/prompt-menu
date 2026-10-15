@@ -12,11 +12,29 @@ func testMLXInvocation() throws {
         "--prompt", "fix the bug",
         "--max-tokens", "512",
         "--temp", "0.2",
-        "--verbose", "False",
+        // Verbose makes mlx_lm.generate print tokens as they come; cleanOutput drops its stats.
+        "--verbose", "True",
     ])
     // Never reach for Hugging Face: the model must already be on disk.
     checkEqual(inv.environment["HF_HUB_OFFLINE"], "1")
     checkEqual(inv.environment["TRANSFORMERS_OFFLINE"], "1")
+    // Python buffers stdout into a pipe, which would hold back the streamed tokens.
+    checkEqual(inv.environment["PYTHONUNBUFFERED"], "1")
+}
+
+func testCustomSystemPrompt() throws {
+    let dir = try makeTempFolder()
+    try makeScript("mlx_lm.generate", in: dir, "")
+    try makeScript("llamafile", in: dir, "")
+    try makeScript("llama-completion", in: dir, "")
+    for backend in Backend.allCases {
+        let config = BackendConfig(backend: backend, model: "m", systemPrompt: "Be brief.")
+        let args = try invocation(for: config, input: "fix it", searchDirs: [dir]).arguments
+        check(args.contains("Be brief.") || args.contains(combinedPrompt("fix it", systemPrompt: "Be brief.")),
+              "\(backend) ignores the custom system prompt")
+        check(!args.contains(where: { $0.contains(agentSystemPrompt) }), "\(backend) still sends the default system prompt")
+    }
+    checkEqual(combinedPrompt("fix it", systemPrompt: "Be brief."), "Be brief.\n\nText to rewrite:\nfix it")
 }
 
 func testLlamafileInvocation() throws {
@@ -106,4 +124,20 @@ func testSettings() throws {
     config = loadConfig(from: defaults)
     checkEqual(config.backend, .mlx)
     checkEqual(config.executable, nil)
+    // Out-of-range numbers are clamped; an empty system prompt means the built-in one.
+    defaults.set(1_000_000, forKey: "maxTokens")
+    defaults.set(-3.0, forKey: "temperature")
+    defaults.set("  ", forKey: "systemPrompt")
+    config = loadConfig(from: defaults)
+    checkEqual(config.maxTokens, maxTokensRange.upperBound)
+    checkEqual(config.temperature, 0)
+    checkEqual(config.systemPrompt, agentSystemPrompt)
+    defaults.set(1, forKey: "maxTokens")
+    defaults.set("Be brief.", forKey: "systemPrompt")
+    config = loadConfig(from: defaults)
+    checkEqual(config.maxTokens, maxTokensRange.lowerBound)
+    checkEqual(config.systemPrompt, "Be brief.")
+    // The built-in prompt isn't saved, so improving it reaches everyone who didn't change it.
+    saveConfig(BackendConfig(backend: .mlx, model: "m"), to: defaults)
+    checkEqual(defaults.string(forKey: "systemPrompt"), "")
 }

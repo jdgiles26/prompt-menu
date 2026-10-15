@@ -22,6 +22,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // ⌘Q, or a SIGTERM (see below), while a model runs: don't leave the runner behind.
+    func applicationWillTerminate(_ notification: Notification) {
+        panels.forEach { $0.stop() }
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings()
         return false
@@ -100,4 +105,10 @@ let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
+// A plain SIGTERM (logout, kill, pkill) would skip applicationWillTerminate and orphan the runner,
+// so turn it into a normal quit.
+signal(SIGTERM, SIG_IGN)
+let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+sigterm.setEventHandler { NSApp.terminate(nil) }
+sigterm.resume()
 app.run()
