@@ -96,6 +96,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
         textView.string = ""
         // Loading a model takes a while before the first word; show that something is happening.
         startedAt = Date()
+        timer?.invalidate() // Try Again while running: the old run's timer would outlive it.
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.status.stringValue = "\(self.runningStatus)… \(Int(Date().timeIntervalSince(self.startedAt)))s"
@@ -103,7 +104,8 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
         let text = source
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try rewrite(text, config: config, started: { process in
-                DispatchQueue.main.async { if mine == self.generation { self.running = process } }
+                // Closed or retried before the runner started: nothing else will stop it.
+                DispatchQueue.main.async { if mine == self.generation { self.running = process } else { process.terminate() } }
             }, progress: { soFar in
                 DispatchQueue.main.async {
                     guard mine == self.generation, self.running != nil else { return }
@@ -136,7 +138,6 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate {
         status.stringValue = text
         textView.isEditable = !isRunning && !failed
         copyButton.isEnabled = !isRunning && !failed
-        againButton.isEnabled = !isRunning
     }
 
     @objc private func copyPrompt(_ sender: Any?) {

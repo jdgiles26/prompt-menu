@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Fixed: Try Again was greyed out while a model ran, although 0.2.0 said it could stop one.
+- Fixed: closing the dialog in the moment before the runner started left the runner running.
+
 ## 0.2.0
 
 - The prompt streams into the dialog as the model writes it, with a seconds counter while the model loads.

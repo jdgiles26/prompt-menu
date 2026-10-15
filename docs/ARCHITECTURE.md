@@ -141,3 +141,4 @@ These are enforced by tests in `Tests/GuardrailTests.swift` and `Tests/ServiceTe
 - `run` reads stdout and stderr through `readabilityHandler` on system queues, guarded by an `NSLock`. Progress callbacks arrive on those queues, and the panel hops to the main queue to update.
 - Each run has a `generation` number. Results and progress from an older run (after Try Again, or after the dialog closed) are ignored.
 - Closing the dialog or pressing Try Again calls `terminate()` on the running process. Quitting the app (⌘Q, logout, or SIGTERM, which `main.swift` turns into a normal quit) stops every panel's runner in `applicationWillTerminate`, so none is orphaned.
+- `Process` starts each runner in its own process group, and `terminate()` stops that whole group. This also stops a llamafile, which runs as a child of `/bin/sh` (`testRunTimeout`).

@@ -53,6 +53,14 @@ func testRunTimeout() throws {
     let start = Date()
     checkThrows(.timedOut) { _ = try run(Invocation(executable: slow, arguments: [], environment: [:]), timeout: 1) }
     check(Date().timeIntervalSince(start) < 5, "the timeout should stop the runner promptly")
+
+    // Stopping the runner stops what it started too: a llamafile runs as /bin/sh's child.
+    let marker = (dir as NSString).appendingPathComponent("child-survived")
+    let wrapper = try makeScript("wrapper", in: dir, "sleep 1; touch '\(marker)'")
+    let wrapperStart = Date()
+    checkThrows(.timedOut) { _ = try run(Invocation(executable: wrapper, arguments: [], environment: [:]), timeout: 0.3) }
+    Thread.sleep(forTimeInterval: max(0, 1.5 - Date().timeIntervalSince(wrapperStart)))
+    check(!FileManager.default.fileExists(atPath: marker), "the runner's child outlived the timeout")
 }
 
 func testRewritePipeline() throws {
