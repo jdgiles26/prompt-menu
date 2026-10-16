@@ -17,7 +17,27 @@ Wherever your notes leave something out, the model writes `[CONFIRM: what to ask
 
 - 🔒 **Local only.** No network code at all, and a test fails the build if any appears. The model runs as a local program.
 - 🧩 **Your choice of runner:** Apple **MLX**, Mozilla.ai's **llamafile**, or **llama.cpp**.
-- 🪶 **Small.** About 750 lines of Swift, built with the Command Line Tools. No Xcode project, no dependencies.
+- ⚡ **Fast repeats.** The MLX model stays loaded for 5 minutes after use, so the next rewrite starts writing in under a second instead of about 10.
+- 🧭 **Agentic patterns.** One click restructures the prompt around a proven workflow from [Awesome Agentic Patterns](https://github.com/nibzard/awesome-agentic-patterns), such as Plan-Then-Execute or Spec-As-Test.
+- ✅ **A built-in check.** Each result gets a score for missing sections, facts dropped from your text, open questions and a checkable finish, with no model involved.
+- 🪶 **Small.** Swift built with the Command Line Tools. No Xcode project, no dependencies.
+
+## The Services items
+
+| Item | What you get |
+|---|---|
+| **Rewrite as Agent Prompt** | ROLE · OBJECTIVE · CONTEXT · STEPS · CONSTRAINTS · DONE WHEN, in a dialog |
+| **Rewrite as Bug Report** | TITLE · SUMMARY · STEPS TO REPRODUCE · EXPECTED · ACTUAL · ENVIRONMENT · SCOPE |
+| **Rewrite as Code Review Request** | CHANGE · CONTEXT · REVIEW FOCUS · OUT OF SCOPE · TESTING · DONE WHEN |
+| **Rewrite as Commit Message** | An imperative subject of at most 72 characters, and a body that says what and why |
+| **Rewrite as Agent Prompt (Replace Selection)** | The agent prompt, replacing the highlighted text directly, with no dialog. A small window shows progress. |
+
+## The dialog
+
+- **Versions.** Every result is kept: `1 · First draft`, `2 · Plan-Then-Execute Pattern`, `3 · Edited`… Pick any of them from the menu at the top left. Your edits are saved as their own version before a pattern is applied.
+- **Check.** The badge shows a score out of 100 and the number of `[CONFIRM: …]` questions. Click it for the list of problems.
+- **Agentic Pattern…** Shows the five patterns that best fit the prompt, plus a search over all of them. If the model is already loaded, it suggests one (★). **Apply** rewrites the current text around that workflow, adding a `WORKFLOW PATTERN: …, because …` line, and keeps everything else as a new version.
+- **Try Again** repeats the last step: the first draft, or the last pattern. **Copy** (⌘↩) copies the text as shown, edits included.
 
 ## Requirements
 
@@ -49,7 +69,9 @@ If **Rewrite as Agent Prompt** doesn't appear under Services, turn it on in **Sy
 
 Prompt Menu looks for the program on your `PATH`, in Homebrew's folders, `~/.local/bin`, `~/bin` and pip's `~/Library/Python/*/bin`. The settings window shows what it found; set a full path if yours is elsewhere.
 
-**Which model?** On an 8 GB Mac, a 3B–4B instruct model at 4-bit (about 2 GB) is the practical size: text starts streaming in about 8 seconds and a full prompt takes 15–20. With 16 GB or more, 7B–9B models follow the outline noticeably better.
+**Which model?** On an 8 GB Mac, a 3B–4B instruct model at 4-bit (about 2 GB) is the practical size. Measured with Llama 3.2 3B: the first rewrite starts writing after about 10 seconds, and while the model stays loaded the next one starts in under a second; a full prompt takes 7–15 seconds. With 16 GB or more, 7B–9B models follow the outline, and pick patterns, noticeably better.
+
+**Keeping the model loaded.** With MLX, the model stays in memory for 5 minutes after each use (about 2 GB for a 3B model) and a menu-bar icon shows while it's loaded. Click it to see the time left or choose **Unload Model Now**; Prompt Menu quits once nothing is open and the model is unloaded. Set the time in settings, or 0 to unload right after each rewrite. llamafile and llama.cpp always run once per rewrite.
 
 **Status:** MLX is tested end to end with a real model. The llamafile and llama.cpp command lines are covered by tests but haven't yet been run against real models; reports welcome.
 
@@ -65,14 +87,19 @@ defaults write local.promptmenu model mlx-community/Qwen3-4B-4bit
 defaults write local.promptmenu executable /opt/homebrew/bin/llama-completion   # empty = search
 defaults write local.promptmenu maxTokens -int 1024    # 16–8192
 defaults write local.promptmenu temperature -float 0.3 # 0–2
-defaults write local.promptmenu systemPrompt "Rewrite the text as …"   # empty = built-in prompt
+defaults write local.promptmenu systemPrompt "Rewrite the text as …"   # empty = built-in agent prompt
+defaults write local.promptmenu keepLoadedMinutes -int 5                # 0–120; 0 = unload right away (MLX)
 ```
+
+`systemPrompt` replaces the instructions for **Rewrite as Agent Prompt** and Replace Selection only; the other styles keep theirs.
 
 ## Privacy
 
-- No network code: the build's tests scan `Sources/` for networking APIs and URLs.
+- No network code: the build's tests scan `Sources/` for networking APIs and URLs, and the MLX worker script for network and download calls.
 - No entitlements, no permissions requested, no telemetry, no logs of your text.
-- Your text goes to the runner as a command-line argument and stays on this Mac. The app quits when its last window closes, so no model stays in memory.
+- Your text goes to the runner as a command-line argument, or to the kept-loaded MLX worker through a pipe that only Prompt Menu holds. It stays on this Mac. The worker exits when Prompt Menu does.
+- The model stays in memory only for the keep-loaded time (5 minutes by default, 0 to turn it off). Then Prompt Menu quits if nothing is open.
+- The pattern catalog is built into the app. Nothing is fetched.
 
 ## Documentation
 
@@ -83,11 +110,14 @@ defaults write local.promptmenu systemPrompt "Rewrite the text as …"   # empty
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, testing, debugging, releasing |
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repo |
 | [docs/AGENTIC_DEVELOPMENT.md](docs/AGENTIC_DEVELOPMENT.md) | Guardrails, what to touch and not touch, and the change-impact map |
+| [docs/FEATURE_FUTURE.md](docs/FEATURE_FUTURE.md) | Designed but not built yet: comparing models, a multi-model review pipeline, a fill-the-gaps wizard, sending to an agent CLI |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each version |
 
 ## Credits
 
 The build layout, test runner and parts of the app shell are adapted from [Finder Menu](https://github.com/nikgrbn/finder-menu) by nikgrbn (MIT).
+
+The agentic patterns are from [Awesome Agentic Patterns](https://github.com/nibzard/awesome-agentic-patterns) by Nikola Balic and contributors, used under the Apache License 2.0. `Resources/patterns.json` contains their titles, metadata and an excerpt of each Solution section; see `Resources/NOTICE-agentic-patterns.txt`.
 
 ## License
 

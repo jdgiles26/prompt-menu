@@ -40,11 +40,11 @@ flowchart LR
 
 | Promise | Enforced by | Notes |
 |---|---|---|
-| No network code | `testNoNetworkCode` | This includes localhost HTTP, `mlx_lm.server`, `ollama serve`, `llamafile --server`, and URL-loading APIs. A feature that needs the network is a product decision for a person to make, not a change to make here. |
-| No downloads | `HF_HUB_OFFLINE=1` asserted in `testMLXInvocation` | Don't add "download model" buttons or auto-fetching. Tell users the Terminal command instead. |
+| No network code | `testNoNetworkCode` (scans `Sources/` and `Resources/*.py`) | This includes localhost HTTP, `mlx_lm.server`, `ollama serve`, `llamafile --server`, and URL-loading APIs. The MLX worker is reached through its stdin and stdout only. A feature that needs the network is a product decision for a person to make, not a change to make here. |
+| No downloads | `HF_HUB_OFFLINE=1` asserted in `testMLXInvocation` and for the worker in `testNoNetworkCode` | Don't add "download model" buttons or auto-fetching. Tell users the Terminal command instead. The pattern catalog is a snapshot shipped in the app. |
 | No permissions or entitlements | `testNoEntitlementsOrPermissions` | No Accessibility, Screen Recording, Apple Events, Full Disk Access or sandbox exceptions. |
 | Text stays on the Mac and isn't logged | review | Don't `print`, `NSLog` or `Logger` the user's text or the model's output. Don't write them to disk. |
-| Nothing stays running | `AppDelegate.finish()` | The app quits when no window is open. Don't add a menu-bar item, a login item or a background agent without asking. |
+| Nothing stays running beyond the keep-loaded time | `AppDelegate.finish()`, `WarmRunner` idle timer, `testWarmRunnerUnloads` | The app quits when no window is open and no model is kept loaded. The kept-loaded model (default 5 minutes, 0 turns it off) shows a menu-bar item with Unload Model Now; that item exists only while a model is loaded. Don't add a login item, a daemon or any other background work without asking. |
 
 ### 2.2 Engineering rules
 
@@ -53,7 +53,7 @@ flowchart LR
 3. **`Sources/Core` imports Foundation only.** No AppKit, so the tests can cover it. UI code goes in `Sources/PromptMenu`.
 4. **Logic belongs in Core.** If you're adding a branch or a calculation to a UI file, ask whether it can move into Core and get a test.
 5. **Pass user text as one argv entry.** Never interpolate it into a shell string. Never use `/bin/sh -c`. (`/bin/sh <path> args…` for llamafile is fine: the shell runs the file with argv untouched.)
-6. **One runner process per dialog.** Track it in `running`. Terminate it on Close and on Try Again. Ignore late results using `generation`.
+6. **One model run per dialog.** Keep the stop function `rewrite`'s `started` callback gives you in `stopRunning`, and call it on Close and on Try Again. Ignore late results using `generation`.
 7. **Touch AppKit on the main thread only.** `rewrite` runs on a background queue, and its `started` and `progress` callbacks arrive on background queues.
 8. **`cleanOutput` must be safe on partial text** (it runs on every streamed chunk) and must stay cheap: it runs hundreds of times per rewrite.
 9. **No new settings keys without the full sweep.** See [Change-impact map](#change-impact-map) → "Add a setting".
@@ -72,13 +72,18 @@ flowchart LR
 |---|---|---|
 | `Sources/Core/*.swift` | ✅ **Change freely, test first** | Every change has a test. Foundation only. |
 | `Sources/PromptMenu/ResultPanel.swift`, `SettingsWindow.swift` | ✅ **Change with care** | UI only. Do the manual checks afterwards. Keep `hidesOnDeactivate = false` and `orderFrontRegardless()`. |
-| `Sources/PromptMenu/main.swift` | ⚠️ **Careful** | Launch timing (0.5 s), the activation policy and `finish()` decide when the app shows settings and when it quits. Re-check flows 1 and 10 in [FLOW_MAPS.md](FLOW_MAPS.md). |
+| `Sources/PromptMenu/main.swift` | ⚠️ **Careful** | Launch timing (0.5 s), the activation policy and `finish()` decide when the app shows settings and when it quits. Replace Selection spins the run loop while the calling app waits. Re-check flows 1, 10, 13 and 14 in [FLOW_MAPS.md](FLOW_MAPS.md). |
 | `Sources/PromptMenu/Service.swift` | ⚠️ **Signature frozen** | The method name and parameter labels must match the plist (`testServicesEntry`). The body can change. |
-| `Resources/App-Info.plist` → `NSServices` | ⛔ **Don't change without asking** | Renaming `NSMenuItem` changes the menu for every user and resets their keyboard shortcut. Changing `NSMessage` needs matching code changes. |
+| `Resources/App-Info.plist` → `NSServices` | ⛔ **Don't change without asking** | Renaming `NSMenuItem` changes the menu for every user and resets their keyboard shortcut. Changing `NSMessage` needs matching code changes. Every item appears in every app's right-click menu, so adding one needs a person's agreement too. |
 | `Resources/App-Info.plist` → `CFBundleIdentifier` | ⛔ **Never** | `local.promptmenu` is also the settings domain. Changing it loses everyone's settings. |
 | `Resources/App-Info.plist` → versions | ✅ only when releasing | Change both `CFBundleShortVersionString` and `CFBundleVersion` (see [DEVELOPMENT.md](DEVELOPMENT.md#releasing)). |
-| `agentSystemPrompt` (in `Prompt.swift`) | ⚠️ **Careful** | Keep the six section names and `[CONFIRM`, which tests check. Wording changes reach every user who hasn't customized theirs. Before and after, try it on 3+ real notes with the default model and include the outputs in your report. |
-| Settings keys (`backend`, `model`, `executable`, `maxTokens`, `temperature`, `systemPrompt`) | ⛔ **Don't rename or remove** | Users have saved values under them and the README documents them. Adding keys is fine (see recipe). |
+| `agentSystemPrompt` (in `Prompt.swift`) and the other styles' prompts (in `Style.swift`) | ⚠️ **Careful** | Keep each style's section names and `[CONFIRM`, which `testStyles` and the checker rely on. Wording changes reach every user. Before and after, try it on 3+ real notes with the default model and include the outputs in your report. |
+| `Style` cases, `menuTitle`, `serviceMessage` | ⛔ **Don't rename** | They're the Services items users see and bind shortcuts to. Adding a style is fine (see recipe). |
+| `Sources/Core/WarmRunner.swift` and `Resources/mlx_worker.py` | ⚠️ **Change together** | They share the JSON-lines protocol. `WarmRunnerTests`' fake worker pins it: change the fake first. The worker must stay on stdin and stdout, force offline mode, and exit when stdin closes. Test with the real model too (DEVELOPMENT manual check 6). |
+| `Sources/Core/Checker.swift` | ✅ **Change freely, test first** | The point costs are documented in ARCHITECTURE; update that table with them. |
+| `Sources/Core/Patterns.swift` scoring (`rankPatterns`, `shortlist`, stopwords) | ✅ **Test first, then try real prompts** | Unit tests pin a few cases; also check a handful of realistic prompts and say in your report how the shortlists changed. |
+| `Resources/patterns.json`, `Resources/NOTICE-agentic-patterns.txt` | ⛔ **Never edit by hand** | Regenerate with `scripts/update-patterns.sh`. Keep the NOTICE: the Apache license requires it. |
+| Settings keys (`backend`, `model`, `executable`, `maxTokens`, `temperature`, `systemPrompt`, `keepLoadedMinutes`) | ⛔ **Don't rename or remove** | Users have saved values under them and the README documents them. Adding keys is fine (see recipe). |
 | `Backend` raw values (`mlx`, `llamafile`, `llama.cpp`) | ⛔ **Don't rename** | They're saved in `backend`. Unknown values fall back to MLX, which would silently switch a user's runner. |
 | `Tests/main.swift` helpers | ✅ add, ⚠️ change | Adding helpers is fine. Changing `check` or `checkEqual` affects every test. |
 | `Tests/GuardrailTests.swift` | ⛔ **Only stricter** | See 2.3. |
@@ -105,9 +110,15 @@ flowchart LR
 | **`RewriteError`** (add a case or change wording) | `errorDescription` · FLOW_MAPS diagram 8 · DEVELOPMENT debugging table | A test that triggers it with `checkThrows` |
 | **Add a setting** | `BackendConfig` field + default · `loadConfig` (with clamping or validation) · `saveConfig` · settings window, if it's shown there · README Settings block (`defaults write` line) · FLOW_MAPS diagram 9 · ARCHITECTURE class diagram | `testSettings`: default, round-trip, invalid value |
 | **The default model** (`defaultMLXModel`) | README (model example + "Which model?") · settings hint text · DEVELOPMENT setup table · CHANGELOG | `testSettings` |
-| **The Services item** (title, send types, method) | `Resources/App-Info.plist` · `serviceMessage` · the `Service.swift` signature · README · FLOW_MAPS 2 · ask a person first | `testServicesEntry` |
-| **Dialog behavior** (buttons, shortcuts, states) | FLOW_MAPS diagram 7 · README if shortcuts change · DEVELOPMENT manual checks | none automated: do the manual checks |
-| **When the app shows settings or quits** (`main.swift`) | FLOW_MAPS diagrams 1 and 10 · ARCHITECTURE decisions table | none automated: manual checks 2, 8 |
+| **A Services item** (title, send types, method) | `Resources/App-Info.plist` · `Style` or `inPlaceServiceMessage` · the `Service.swift` method · README Services table · FLOW_MAPS 2 or 13 · settings note text · ask a person first | `testServicesEntry` |
+| **Add a style** | `Style` case with `dialogTitle`, `sections`, `builtInPrompt` · a plist `NSServices` entry · a `Service.swift` method · README Services table · ARCHITECTURE files table and class diagram · settings note text · CHANGELOG | `testServicesEntry` and `testStyles` loop over all styles; add a checker case if the style has special rules (like the commit subject length) |
+| **The worker protocol** (`WarmRunner` ↔ `mlx_worker.py`) | both files together · ARCHITECTURE "Keeping an MLX model loaded" · FLOW_MAPS 14 | the fake worker in `WarmRunnerTests` first; then try the real model |
+| **Keep-loaded behavior** (idle time, menu-bar item, quitting) | README "Keeping the model loaded" and Privacy · FLOW_MAPS 10 and 14 · AGENTS rule 12 · guardrail 2.1 | `testWarmRunnerUnloads`, `testSettings`; manual checks 6, 13, 14 |
+| **Checker rules or costs** | ARCHITECTURE checker table · README "Check" if user-visible | a case in `CheckerTests` for each rule |
+| **Pattern scoring or prompts** (`rankPatterns`, `shortlist`, `patternSystemPrompt`) | ARCHITECTURE "Agentic patterns" · FLOW_MAPS 15 | `testPatternShortlist`, `testPatternChoice`; real-model check of the structure, with check scores in your report |
+| **Pattern catalog refresh** | run `scripts/update-patterns.sh` · CHANGELOG (with the commit) | `testPatternsCatalog`, `testPatternShortlist` |
+| **Dialog behavior** (buttons, shortcuts, states, versions) | FLOW_MAPS diagram 7 · README "The dialog" · DEVELOPMENT manual checks | none automated: do the manual checks |
+| **When the app shows settings or quits** (`main.swift`) | FLOW_MAPS diagrams 1, 10 and 14 · ARCHITECTURE decisions table | none automated: manual checks 2, 13, 14 |
 | **Threading in `run` or the panel** | ARCHITECTURE "Threading" · FLOW_MAPS 5 | `testRunCapturesOutput` (deadlock), `testStreaming`, `testRunnerChildKeepsPipeOpen` |
 | **Build flags or deployment target** | both `build.sh` and `test.sh` · `LSMinimumSystemVersion` · README requirements · DEVELOPMENT style · CI matrix · ask a person first | CI must pass on both macOS versions |
 | **Install steps** | README Install · FLOW_MAPS 11 · DEVELOPMENT commands | Run install and uninstall by hand |
@@ -134,6 +145,13 @@ flowchart LR
 3. Add `var timeoutSeconds = 300` to `BackendConfig`, plus a range constant, the read in `loadConfig` with `clamped(to:)`, and the write in `saveConfig`. Use it where it applies (the panel passes `timeout:` to `rewrite`).
 4. Green. Then update the README `defaults write` block, FLOW_MAPS 9 and the ARCHITECTURE class diagram.
 
+### Add a style (example: "Release Notes")
+
+1. In `Tests/ServiceTests.swift`, nothing to add: `testServicesEntry` and `testStyles` loop over `Style.allCases`, so adding the case makes them fail until the plist and `Service.swift` match.
+2. Add `case releaseNotes` to `Style` with its `dialogTitle`, `sections` and `builtInPrompt` (reuse the shared `rules`, and name each section as `NAME:` in the instructions).
+3. Red: `testServicesEntry` fails. Add the plist entry (`NSMenuItem` = `menuTitle`, `NSMessage` = `serviceMessage`, send types, `NSRequiredContext`) and the `@objc` method in `Service.swift` that calls `open(pasteboard, as: .releaseNotes, error:)`.
+4. Green. Then update the README Services table, the ARCHITECTURE files table, the settings note, and CHANGELOG. Install and check the item appears and opens its dialog.
+
 ### Fix runner noise in the output
 
 1. Copy the exact noisy output into a new `checkEqual(cleanOutput(…), …)` in `testCleanOutput`. Add a partial-stream version too if the noise can arrive in pieces.
@@ -156,7 +174,8 @@ Stop and ask a person before doing any of these:
 - Renaming the Services item, the bundle id, a settings key or a `Backend` raw value.
 - Removing or loosening a test assertion or guardrail.
 - Changing the default model or the built-in prompt's structure.
-- Keeping the app running in the background (menu-bar item, login item, daemon).
+- Keeping the app running in the background beyond the keep-loaded model (login item, daemon, a permanent menu-bar item).
+- Adding a Services item, which appears in every app's right-click menu.
 - Anything that writes outside `~/Applications`, the repo, or `local.promptmenu`.
 - Pushing, tagging, publishing or creating releases.
 - Two docs in this repo contradict each other, or a doc contradicts the code. Ask which one is right; don't guess.

@@ -6,10 +6,11 @@ Instructions for AI coding agents (Claude Code, Codex, Cursor, Copilot and other
 
 ## What this is
 
-A macOS app that adds **Services → Rewrite as Agent Prompt**. It sends highlighted text to a **local** model runner (MLX `mlx_lm.generate`, Mozilla.ai `llamafile`, or llama.cpp `llama-completion`) started as a program, and shows the streamed result in an editable dialog. It's Swift 5 and AppKit, built with plain `swiftc`. It has no dependencies, no Xcode project and no network code.
+A macOS app that adds five Services items: **Rewrite as Agent Prompt**, **Bug Report**, **Code Review Request**, **Commit Message**, and **Agent Prompt (Replace Selection)**. It sends highlighted text to a **local** model runner (MLX `mlx_lm.generate`, Mozilla.ai `llamafile`, or llama.cpp `llama-completion`) started as a program, or to a kept-loaded MLX worker (`Resources/mlx_worker.py`) over stdin and stdout. It shows the streamed result in an editable dialog with versions, a deterministic check, and an **Agentic Pattern…** button that restructures the prompt around a workflow from a bundled snapshot of Awesome Agentic Patterns. It's Swift 5 and AppKit, built with plain `swiftc`. It has no dependencies, no Xcode project and no network code.
 
 - `Sources/Core/`: the logic, with no UI. Fully tested.
 - `Sources/PromptMenu/`: the AppKit shell. Checked by hand.
+- `Resources/`: the plist, the MLX worker, and the generated pattern catalog with its license notice.
 - `Tests/`: a home-made test runner plus tests, run with `scripts/test.sh`.
 - `docs/`: [ARCHITECTURE](docs/ARCHITECTURE.md) · [FLOW_MAPS](docs/FLOW_MAPS.md) · [DEVELOPMENT](docs/DEVELOPMENT.md) · [AGENTIC_DEVELOPMENT](docs/AGENTIC_DEVELOPMENT.md)
 
@@ -23,16 +24,18 @@ scripts/install.sh         # only when checking UI or Services by hand (writes t
 
 ## Hard rules: never break these
 
-1. **No network code.** No `URLSession`, sockets, `Network.framework`, web views, HTTP servers, or `http(s)://` in `Sources/`. No localhost servers either. Runners are started as programs. `testNoNetworkCode` enforces this, and you must not weaken that test to get past it.
-2. **No downloads.** Never make the app fetch models or anything else. MLX runs with `HF_HUB_OFFLINE=1`.
+1. **No network code.** No `URLSession`, sockets, `Network.framework`, web views, HTTP servers, or `http(s)://` in `Sources/`. No localhost servers either. Runners are started as programs, and the MLX worker talks over stdin and stdout only. `testNoNetworkCode` enforces this for `Sources/` and `Resources/*.py`, and you must not weaken that test to get past it.
+2. **No downloads.** Never make the app fetch models, patterns or anything else. MLX and the worker run with `HF_HUB_OFFLINE=1`. `Resources/patterns.json` is refreshed by a developer with `scripts/update-patterns.sh`, never by the app.
 3. **No entitlements, permissions or `*UsageDescription` keys.** No accessibility, screen recording or Apple Events.
 4. **No third-party dependencies.** Build with `swiftc` and the Command Line Tools only. Don't add a Package.swift, CocoaPods or an Xcode project.
 5. **Tests first.** Write or update the test, watch it fail, then implement. Never delete or loosen an assertion just to make a change pass. If an assertion is wrong, say why in the commit.
 6. **Tests never need a real model, the user's `PATH`, the user's settings, or the network.** Use `makeScript` fake runners and a throwaway `UserDefaults` suite.
 7. **Don't run a shell with user text.** Pass the text as one `Process` argument. Never build a shell command string from it. (llamafile goes through `/bin/sh` with the path as `$0` and the arguments as separate argv entries, never with `-c`.)
-8. **Keep the Services wiring in sync.** `NSMessage` in `Resources/App-Info.plist` = `serviceMessage` = the method name in `Service.swift`, with the signature `(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>)`.
-9. **Don't touch user-facing behavior you weren't asked about.** This covers the menu item title, the bundle id `local.promptmenu`, the settings keys, and the built-in prompt's section names.
+8. **Keep the Services wiring in sync.** Each `NSMessage` in `Resources/App-Info.plist` = a `Style.serviceMessage` (or `inPlaceServiceMessage`) = a method name in `Service.swift`, with the signature `(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>)`.
+9. **Don't touch user-facing behavior you weren't asked about.** This covers the menu item titles, the bundle id `local.promptmenu`, the settings keys (including `keepLoadedMinutes`), and each style's section names.
 10. **Don't commit or push unless asked.** Never force-push. Never commit `build/`.
+11. **Never edit `Resources/patterns.json` or its NOTICE by hand.** Regenerate them with `scripts/update-patterns.sh`. The NOTICE is required by the Apache license.
+12. **Nothing stays running except the kept-loaded model,** and only for `keepLoadedMinutes`, with its menu-bar item visible and Unload Model Now available. No login items, daemons or other background work.
 
 ## Before you finish
 
