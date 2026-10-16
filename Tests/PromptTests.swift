@@ -41,5 +41,12 @@ func testCleanOutput() throws {
     // A reply wrapped whole in one code fence is unwrapped; fences inside are kept.
     checkEqual(cleanOutput("```markdown\nROLE: dev\n```"), "ROLE: dev")
     checkEqual(cleanOutput("ROLE: dev\n```sh\nls\n```"), "ROLE: dev\n```sh\nls\n```")
+    // Small models announce the answer despite being told not to; the announcement goes.
+    checkEqual(cleanOutput("Here is the rewritten prompt:\n\nROLE: dev"), "ROLE: dev")
+    checkEqual(cleanOutput("Sure! Here's the bug report:\nTITLE: x"), "TITLE: x")
+    checkEqual(cleanOutput("Here is the rewritten prompt:\n```\nROLE: dev\n```"), "ROLE: dev")
+    // But a first line that is content stays, and so does an announcement that's still arriving.
+    checkEqual(cleanOutput("Here is what happens: the app crashes.\nTITLE: x"), "Here is what happens: the app crashes.\nTITLE: x")
+    checkEqual(cleanOutput("Here is the rewri"), "Here is the rewri")
     checkEqual(cleanOutput("  \n"), "")
 }

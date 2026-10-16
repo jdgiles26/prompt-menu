@@ -69,23 +69,45 @@ func run(_ inv: Invocation, timeout: TimeInterval, started: ((Process) -> Void)?
     return String(decoding: stdout, as: UTF8.self)
 }
 
-// Highlighted text in, agentic prompt out. Blocks while the model runs, so call it off the main thread.
-// `progress` gets the cleaned reply so far while it streams, on a background queue.
-func rewrite(_ text: String, config: BackendConfig, searchDirs: [String] = standardSearchDirs(),
-             timeout: TimeInterval = 300, started: ((Process) -> Void)? = nil,
-             progress: ((String) -> Void)? = nil) throws -> String {
+// Highlighted text in, agentic prompt out, using config.systemPrompt as the instructions. Blocks
+// while the model runs, so call it off the main thread.
+// `warm` keeps an MLX model loaded between calls; if it can't start, the model runs once instead and
+// `notice` says why. `started` gets a function that stops the model. `progress` gets the cleaned
+// reply so far while it streams, on a background queue.
+func rewrite(_ text: String, config: BackendConfig, warm: WarmRunner? = nil, searchDirs: [String] = standardSearchDirs(),
+             timeout: TimeInterval = 300, started: ((@escaping () -> Void) -> Void)? = nil,
+             progress: ((String) -> Void)? = nil, notice: ((String) -> Void)? = nil) throws -> String {
     let input = try prepareInput(text)
-    let inv = try invocation(for: config, input: input, searchDirs: searchDirs)
     var lastShown = ""
-    let raw = try run(inv, timeout: timeout, started: started, output: progress.map { progress in
-        { soFar in
+    let report = progress.map { progress in
+        { (soFar: String) in
             let cleaned = cleanOutput(soFar)
-            // Chunks arrive one at a time per pipe, so lastShown isn't shared between threads.
+            // Chunks arrive one at a time, so lastShown isn't shared between threads.
             guard !cleaned.isEmpty, cleaned != lastShown else { return }
             lastShown = cleaned
             progress(cleaned)
         }
-    })
+    }
+    func runOnce() throws -> String {
+        let inv = try invocation(for: config, input: input, searchDirs: searchDirs)
+        return try run(inv, timeout: timeout, started: started.map { started in { process in started { process.terminate() } } },
+                       output: report)
+    }
+
+    let raw: String
+    let model = config.model.trimmingCharacters(in: .whitespaces)
+    if config.backend == .mlx, let warm {
+        guard !model.isEmpty else { throw RewriteError.modelNotSet }
+        do {
+            raw = try warm.generate(model: model, system: config.systemPrompt, prompt: input, maxTokens: config.maxTokens,
+                                    temperature: config.temperature, timeout: timeout, started: started, progress: report)
+        } catch let unavailable as WarmRunnerUnavailable {
+            notice?("Couldn't keep the model loaded (\(unavailable.reason)), so it ran once instead.")
+            raw = try runOnce()
+        }
+    } else {
+        raw = try runOnce()
+    }
     let output = cleanOutput(raw)
     guard !output.isEmpty else { throw RewriteError.emptyOutput }
     return output

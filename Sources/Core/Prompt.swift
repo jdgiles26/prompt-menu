@@ -32,6 +32,7 @@ enum RewriteError: Error, Equatable {
     case failed(status: Int32, message: String)
     case timedOut
     case emptyOutput
+    case modelError(String)  // The kept-loaded model replied with an error, such as a model that isn't downloaded.
 }
 
 extension RewriteError: LocalizedError {
@@ -45,6 +46,7 @@ extension RewriteError: LocalizedError {
             return "The model runner stopped with exit code \(status).\n\n\(message.isEmpty ? "It printed no error." : message)"
         case .timedOut: return "The model took too long and was stopped. Try a smaller model or shorter text."
         case .emptyOutput: return "The model didn't return any text."
+        case .modelError(let message): return "The model couldn't answer.\n\n\(message)"
         }
     }
 }
@@ -74,6 +76,11 @@ func cleanOutput(_ raw: String) -> String {
         .filter { line in !noise.contains { line.range(of: $0, options: .regularExpression) != nil } }
         .joined(separator: "\n")
         .trimmingCharacters(in: .whitespacesAndNewlines)
+    // "Here is the rewritten prompt:" on a line of its own, which small models add anyway.
+    if let announcement = text.range(of: "^(?:(?:sure|okay|ok|certainly)[!,. ]*)?(?:here is|here's|below is)[^\\n]{0,60}:[ \\t]*\\n",
+                                     options: [.regularExpression, .caseInsensitive]) {
+        text = text[announcement.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
     // A reply wrapped whole in one code fence: keep what's inside.
     let lines = text.components(separatedBy: "\n")
     if lines.count >= 2, lines[0].hasPrefix("```"), lines[lines.count - 1] == "```",
@@ -82,6 +89,3 @@ func cleanOutput(_ raw: String) -> String {
     }
     return text
 }
-
-// The Services menu item's method name, in Info.plist's NSMessage and on the app's services provider.
-let serviceMessage = "rewriteAsAgentPrompt"

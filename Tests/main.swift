@@ -73,6 +73,18 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("docs cover every runner", testDocsCoverEveryRunner),
     ("settings", testSettings),
     ("Services entry", testServicesEntry),
+    ("styles", testStyles),
+    ("checker: good prompt", testCheckerScoresAGoodPrompt),
+    ("checker: problems", testCheckerFindsProblems),
+    ("checker: commit message", testCheckerCommitMessage),
+    ("patterns catalog", testPatternsCatalog),
+    ("pattern shortlist", testPatternShortlist),
+    ("pattern choice", testPatternChoice),
+    ("warm model: reuse", testWarmRunnerReusesTheProcess),
+    ("warm model: cancel and errors", testWarmRunnerCancelAndErrors),
+    ("warm model: unload", testWarmRunnerUnloads),
+    ("python interpreter", testInterpreter),
+    ("warm model fallback", testRewriteFallsBack),
 ]
 
 for test in tests {

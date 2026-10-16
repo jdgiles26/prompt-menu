@@ -5,6 +5,7 @@ let defaultMLXModel = "mlx-community/Llama-3.2-3B-Instruct-4bit"
 
 let maxTokensRange = 16...8192
 let temperatureRange = 0.0...2.0
+let keepLoadedRange = 0...120
 
 // The app's own preferences. Also editable with `defaults write local.promptmenu <key> <value>`.
 let settings = UserDefaults(suiteName: "local.promptmenu") ?? .standard
@@ -30,6 +31,15 @@ func saveConfig(_ config: BackendConfig, to defaults: UserDefaults = settings) {
     defaults.set(config.temperature, forKey: "temperature")
     // Saved only when changed, so a better built-in prompt in a later version reaches everyone else.
     defaults.set(config.systemPrompt == agentSystemPrompt ? "" : config.systemPrompt, forKey: "systemPrompt")
+}
+
+// Minutes an MLX model stays loaded after a rewrite, so the next one starts right away. 0 = unload at once.
+func keepLoadedMinutes(from defaults: UserDefaults = settings) -> Int {
+    defaults.object(forKey: "keepLoadedMinutes") == nil ? 5 : defaults.integer(forKey: "keepLoadedMinutes").clamped(to: keepLoadedRange)
+}
+
+func saveKeepLoadedMinutes(_ minutes: Int, to defaults: UserDefaults = settings) {
+    defaults.set(minutes.clamped(to: keepLoadedRange), forKey: "keepLoadedMinutes")
 }
 
 extension Comparable {

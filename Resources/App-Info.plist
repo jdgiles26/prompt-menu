@@ -43,6 +43,80 @@
 			<key>NSRequiredContext</key>
 			<dict/>
 		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Rewrite as Bug Report</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>rewriteAsBugReport</string>
+			<key>NSPortName</key>
+			<string>Prompt Menu</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Rewrite as Code Review Request</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>rewriteAsCodeReviewRequest</string>
+			<key>NSPortName</key>
+			<string>Prompt Menu</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Rewrite as Commit Message</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>rewriteAsCommitMessage</string>
+			<key>NSPortName</key>
+			<string>Prompt Menu</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Rewrite as Agent Prompt (Replace Selection)</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>rewriteAsAgentPromptInPlace</string>
+			<key>NSPortName</key>
+			<string>Prompt Menu</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSReturnTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSTimeout</key>
+			<string>120000</string>
+		</dict>
 	</array>
 </dict>
 </plist>

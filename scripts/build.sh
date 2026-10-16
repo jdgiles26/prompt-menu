@@ -12,6 +12,7 @@ SDK="$(xcrun --sdk macosx --show-sdk-path)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Resources/App-Info.plist "$APP/Contents/Info.plist"
+cp Resources/mlx_worker.py Resources/patterns.json Resources/NOTICE-agentic-patterns.txt "$APP/Contents/Resources/"
 
 xcrun swiftc -swift-version 5 -O -sdk "$SDK" -target "$TARGET" \
   -module-name PromptMenu -framework Cocoa \

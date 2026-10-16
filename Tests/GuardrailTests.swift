@@ -15,6 +15,18 @@ func testNoNetworkCode() throws {
             check(false, "Sources/\(file) contains \"\(word)\": Prompt Menu must not use the network")
         }
     }
+    // The model worker talks over stdin and stdout only, and never downloads a model.
+    let pythonForbidden = ["import socket", "http", "urllib", "import requests", "urlopen", "asyncio",
+                           "snapshot_download", "hf_hub_download"]
+    let scripts = try FileManager.default.contentsOfDirectory(atPath: "Resources").filter { $0.hasSuffix(".py") }
+    check(!scripts.isEmpty, "Resources/mlx_worker.py is missing")
+    for file in scripts {
+        let source = try String(contentsOfFile: "Resources/\(file)", encoding: .utf8)
+        for word in pythonForbidden where source.contains(word) {
+            check(false, "Resources/\(file) contains \"\(word)\": the worker must not use the network")
+        }
+        check(source.contains("os.environ[\"HF_HUB_OFFLINE\"] = \"1\""), "Resources/\(file) must force HF_HUB_OFFLINE")
+    }
 }
 
 // The app is never sandboxed out of running local programs, and never asks for more than it uses.

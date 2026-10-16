@@ -109,6 +109,12 @@ func testSettings() throws {
     let suite = "PromptMenuTests-\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suite) else { throw TestFailure(description: "no defaults suite") }
     defer { defaults.removePersistentDomain(forName: suite) }
+    // Keeping the model loaded: 5 minutes unless changed, 0 turns it off, clamped to 0…120.
+    checkEqual(keepLoadedMinutes(from: defaults), 5)
+    saveKeepLoadedMinutes(0, to: defaults)
+    checkEqual(keepLoadedMinutes(from: defaults), 0)
+    saveKeepLoadedMinutes(500, to: defaults)
+    checkEqual(keepLoadedMinutes(from: defaults), keepLoadedRange.upperBound)
     // Nothing saved: MLX with a small instruct model.
     var config = loadConfig(from: defaults)
     checkEqual(config.backend, .mlx)

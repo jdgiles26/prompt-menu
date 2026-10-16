@@ -6,11 +6,13 @@ final class SettingsWindowController: NSWindowController {
     private let runnerField = NSTextField()
     private let modelField = NSTextField()
     private let tokensField = NSTextField()
+    private let keepLoadedField = NSTextField()
     private let hint = NSTextField(wrappingLabelWithString: "")
     var onTryIt: ((String) -> Void)?
+    var onSave: (() -> Void)?
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 300),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 340),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Prompt Menu"
         window.isReleasedWhenClosed = false
@@ -27,6 +29,10 @@ final class SettingsWindowController: NSWindowController {
         backendPopup.target = self
         backendPopup.action = #selector(backendChanged(_:))
         tokensField.formatter = { let f = NumberFormatter(); f.minimum = 16; f.maximum = 8192; return f }()
+        keepLoadedField.formatter = { let f = NumberFormatter(); f.minimum = 0; f.maximum = 120; return f }()
+        let keepLoadedNote = NSTextField(labelWithString: "minutes after use, so the next rewrite starts at once (MLX; 0 = unload right away)")
+        keepLoadedNote.textColor = .secondaryLabelColor
+        keepLoadedNote.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.textColor = .secondaryLabelColor
         hint.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         hint.isSelectable = true
@@ -38,6 +44,7 @@ final class SettingsWindowController: NSWindowController {
             [NSTextField(labelWithString: "Runner path:"), runnerField],
             [NSTextField(labelWithString: "Model:"), modelField],
             [NSTextField(labelWithString: "Max tokens:"), tokensField],
+            [NSTextField(labelWithString: "Keep loaded:"), NSStackView(views: [keepLoadedField, keepLoadedNote])],
             [NSGridCell.emptyContentView, hint],
         ])
         grid.column(at: 0).xPlacement = .trailing
@@ -45,9 +52,10 @@ final class SettingsWindowController: NSWindowController {
         grid.rowSpacing = 10
         grid.column(at: 1).width = 400
         tokensField.widthAnchor.constraint(equalToConstant: 80).isActive = true
+        keepLoadedField.widthAnchor.constraint(equalToConstant: 44).isActive = true
 
         let note = NSTextField(wrappingLabelWithString:
-            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere. To change the instructions the model gets: defaults write local.promptmenu systemPrompt \"…\"")
+            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt (or Bug Report, Code Review Request, Commit Message, or Replace Selection) from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere. To change the agent prompt's instructions: defaults write local.promptmenu systemPrompt \"…\"")
         let tryIt = NSButton(title: "Try It", target: self, action: #selector(tryIt(_:)))
         let save = NSButton(title: "Save", target: self, action: #selector(save(_:)))
         save.keyEquivalent = "\r"
@@ -79,6 +87,7 @@ final class SettingsWindowController: NSWindowController {
         runnerField.stringValue = config.executable ?? ""
         modelField.stringValue = config.model
         tokensField.integerValue = config.maxTokens
+        keepLoadedField.integerValue = keepLoadedMinutes()
         updateHints()
     }
 
@@ -125,13 +134,19 @@ final class SettingsWindowController: NSWindowController {
         return config
     }
 
-    @objc private func save(_ sender: Any?) {
+    private func saveAll() {
         saveConfig(editedConfig)
+        saveKeepLoadedMinutes(keepLoadedField.integerValue)
+        onSave?()
+    }
+
+    @objc private func save(_ sender: Any?) {
+        saveAll()
         window?.performClose(nil)
     }
 
     @objc private func tryIt(_ sender: Any?) {
-        saveConfig(editedConfig)
+        saveAll()
         onTryIt?("add a dark mode toggle to the settings page of our react app, it should remember the choice. dont touch the login flow")
     }
 }
