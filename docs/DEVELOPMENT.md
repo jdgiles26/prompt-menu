@@ -55,7 +55,7 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 1. `scripts/install.sh`
 2. Open Prompt Menu from `~/Applications`. The settings window should show `Runner: ✓ found …` and a Keep loaded field with 5.
 3. Click **Try It**. A dialog opens with a spinner and a seconds counter, text streams in, and it ends with "Done in Ns", a version menu showing `1 · First draft`, and a check badge.
-4. Highlight text in TextEdit → right-click → Services. All five items are there: Agent Prompt, Bug Report, Code Review Request, Commit Message, Agent Prompt (Replace Selection). Each of the first four opens a dialog titled after its style.
+4. Highlight text in TextEdit → right-click → Services. All six items are there: Agent Prompt, Bug Report, Code Review Request, Commit Message, Agent Prompt (Replace Selection), Explain This for Me. Each one except Replace Selection opens a dialog titled after its style.
 5. **Replace Selection**: a small "Rewriting…" window appears, then the highlighted text in TextEdit is replaced by the prompt. With a bad runner path, an error appears and the text is unchanged.
 6. **Warm model**: run two rewrites in a row with MLX. The second starts writing within about a second. A menu-bar icon appears after the first; its menu shows the time left and **Unload Model Now**. After Unload Model Now, `pgrep -f mlx_worker` prints nothing.
 7. **Check badge**: click it. A popover lists problems, or "No problems found." Delete the DONE WHEN line: the score drops.
@@ -64,6 +64,8 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 10. While a rewrite is running, click **Close**. Then `pgrep -f mlx_lm.generate` prints nothing (with keep-loaded at 0), or the worker is still there but idle.
 11. Press **Try Again** while it's running. Only one model run continues.
 12. **Copy** (⌘↩) puts the edited text on the clipboard and closes the dialog.
+13. **Explain This for Me**: highlight code in TextEdit and choose it. "Explaining with …" streams a TL;DR first, then the other sections. Agentic Pattern…, Fill Gaps…, Add Project… and the check badge aren't shown. Right-click a `.swift` or `.txt` file in Finder: the item is under Services (or Quick Actions) and explains the file. A `.png` doesn't offer it. (Run `/System/Library/CoreServices/pbs -flush` if a new item doesn't show.)
+14. **Ask a follow-up**: it appears under the first result. Ask three questions: one about the text, one unrelated, one about an earlier answer. Each is answered, and the third shows the earlier turns were in context. While it answers, Ask is disabled; Close stops it (`pgrep -f llama-completion` or `mlx_lm.generate` prints nothing). A failure shows in the transcript and keeps the question in the field.
 13. While a rewrite is running, quit with ⌘Q (or `pkill -f MacOS/PromptMenu`). `pgrep -f "mlx_lm.generate|mlx_worker"` prints nothing.
 14. Close every window. With keep-loaded at 0, `pgrep -f "MacOS/PromptMenu"` prints nothing right away; otherwise the app quits when the model unloads (set Keep loaded to 1 to check in a minute).
 15. Open two dialogs: the second is offset from the first, not exactly on top of it.

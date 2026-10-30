@@ -58,8 +58,8 @@ flowchart LR
 
 | File | Owns | Depends on |
 |---|---|---|
-| `Sources/Core/Style.swift` | The styles (`Style`: agent prompt, bug report, code review request, commit message), each with its Services title and method, instructions and section names; `systemPrompt(for:config:)`; the Replace Selection method name and timeout. | Prompt, Backend |
-| `Sources/Core/Prompt.swift` | The built-in agent prompt instructions (`agentSystemPrompt`), input limits (`maxInputCharacters`, `prepareInput`), `combinedPrompt`, output cleanup (`cleanOutput`), and errors and their messages (`RewriteError`). | Foundation |
+| `Sources/Core/Style.swift` | The styles (`Style`: agent prompt, bug report, code review request, commit message, explain), each with its Services title and method, instructions and section names; `isRewrite` (false for explain, which hides the rewrite tools) and `maxTokens(base:)`; `systemPrompt(for:config:)`; the Replace Selection method name and timeout. | Prompt, Backend |
+| `Sources/Core/Prompt.swift` | The built-in agent prompt instructions (`agentSystemPrompt`), input limits (`maxInputCharacters`, `prepareInput`), `combinedPrompt`, Finder files for Explain (`explainInput(files:)`), output cleanup (`cleanOutput`), and errors and their messages (`RewriteError`). | Foundation |
 | `Sources/Core/Backend.swift` | The runners (`Backend`), a run's settings (`BackendConfig`), the exact command line per runner (`invocation`), and finding programs (`findExecutable`, `standardSearchDirs`). | Prompt |
 | `Sources/Core/Runner.swift` | Running a program with a timeout, streaming its stdout and reporting failures (`run`), plus the whole pipeline from text in to prompt out (`rewrite`), which uses the kept-loaded worker when it's given one and falls back to a one-time run. | Prompt, Backend, WarmRunner |
 | `Sources/Core/WarmRunner.swift` | `WarmRunner`: the MLX worker process, its JSON-lines protocol, one request at a time, cancel, timeout, and unloading after `idleTimeout`. `interpreter(ofScript:)` finds the Python that has mlx-lm. | Prompt |
@@ -69,9 +69,10 @@ flowchart LR
 | `Sources/Core/Fill.swift` | Fill Gaps: `confirmQuestions`, `fill` (exact replacement, no model) and the Polish instructions. | — |
 | `Sources/Core/Project.swift` | Add Project: `projectContext(folder:)` keeps the headings and commands of a chosen folder's AGENTS.md, CLAUDE.md and README; `withProjectContext`. | — |
 | `Sources/Core/Review.swift` | The Review pipeline: the blind jury (`juryPrompt`, `parseVote`, `shuffledOrder`, `agreedVote`, `judgeWeight`, `juryWinner`), hardening (`HardenRole`, `parseHardenReply`, `removeEchoedLines`, `removePreamble`, `hardenVerdict`), the state machine (`ReviewMachine`), `ReviewPipeline`, the log with `lineDiff`, and the estimate. Model calls are injected, so all of it is tested without a model. | Checker, Patterns, Models |
+| `Sources/Core/Chat.swift` | The follow-up chat: `ChatTurn`, `chatSystemPrompt(style:)` (answer every question), `chatContext`, which fits the context into `maxChatCharacters` with fixed shares (the newest turns up to 3,000 characters, oldest dropped first; the start of the result up to 3,000; the highlighted text in the rest, up to `maxInputCharacters`), so a long text never pushes the conversation out; `isNonAnswer` (a refusal in the first sentence, or the context echoed back); and `answerFollowUp`, which asks once with the context and, on a non-answer or an earlier answer repeated for a new question, once without it, unless stopped in between. | Style |
 | `Sources/Core/Settings.swift` | Reading and writing preferences (`loadConfig`, `saveConfig`, `keepLoadedMinutes`), the default model, and the allowed ranges. | Backend |
-| `Sources/PromptMenu/Service.swift` | `ServiceProvider`, the object macOS calls for the five Services items. | Core |
-| `Sources/PromptMenu/ResultPanel.swift` | One dialog per request: spinner and timer, streamed text, versions, the check badge, the model menu (with Compare Models, Review and Review Log), Fill Gaps, Add Project, the Agentic Pattern button, Copy, Try Again and Close, and stopping the model when closed. | Core |
+| `Sources/PromptMenu/Service.swift` | `ServiceProvider`, the object macOS calls for the six Services items. Explain This for Me also takes file URLs from Finder. | Core |
+| `Sources/PromptMenu/ResultPanel.swift` | One dialog per request: spinner and timer, streamed text, versions, the check badge, the model menu (with Compare Models, Review and Review Log), Fill Gaps, Add Project, the Agentic Pattern button, the follow-up chat (`askQuestion`), Copy, Try Again and Close, and stopping the model when closed. | Core |
 | `Sources/PromptMenu/ModelMenu.swift` | The model menu items (`modelMenuItems`, `ActionMenuItem`) and `modelsOnThisMac`. | Core |
 | `Sources/PromptMenu/ModelsSheet.swift` | The sheet for ticking models, with an estimate, used by Compare Models and Review. | Core |
 | `Sources/PromptMenu/FillGapsSheet.swift` | One field per `[CONFIRM: …]` question, and the Polish checkbox. | Core |
@@ -126,6 +127,8 @@ classDiagram
         bugReport
         codeReview
         commitMessage
+        explain
+        +isRewrite Bool
         +menuTitle String
         +serviceMessage String
         +sections [String]
@@ -231,7 +234,8 @@ The score is 100 minus the costs, at least 0. It measures "can I hand this to an
 |---|---|---|
 | Runners are separate programs, started fresh for each rewrite | No network code at all, no server to manage, and nothing left in memory after the dialog closes. | A local HTTP server (Ollama, `mlx_lm.server`, `llamafile --server`). It's faster on repeat runs, but it's network code and a long-running process. |
 | The MLX model is kept loaded by a child process over stdin and stdout | Back-to-back rewrites skip the model load (first text 0.7 s instead of 9.9 s) without any socket: only this app can talk to the worker, and it exits with the app. Unloaded after 5 minutes by default; 0 turns it off. | `mlx_lm.server`, which is an HTTP server. `mlx_lm.chat` over stdin, which keeps a conversation history and has no cancel. |
-| Five Services items, one for in-place replacement | Each style is one click from the right-click menu. Replace Selection is for when no dialog is wanted. | A style chooser in the dialog (an extra step), or an in-place twin for every style (ten items in every app's menu). |
+| Six Services items: five rewrites (one in place) and Explain This for Me | Each style is one click from the right-click menu. Replace Selection is for when no dialog is wanted. | A style chooser in the dialog (an extra step), or an in-place twin for every style (ten items in every app's menu). |
+| The follow-up chat sends the whole conversation each time | The runners answer one prompt and exit, so there's no session to keep. The kept-loaded MLX model makes follow-ups fast anyway. The context goes in the system prompt and the question alone is the prompt: sent as one message, Qwen 2.5 3B repeated the context back. A non-answer is asked again without the context, so off-topic questions still get answered. | A chat mode in the worker (MLX only, and state that outlives the dialog). Prompt wording alone, which a 3B model followed only some of the time. |
 | A deterministic checker, no model | Instant, reproducible, runs on every keystroke, and catches what small models get wrong (dropped facts and sections). | Asking the model to grade itself: slow and biased toward its own output. |
 | The pattern catalog is a snapshot in the app | No network, no stale cache, and a pinned commit. | Fetching the repository at run time. |
 | Keyword shortlist, then the model's typed choice | The keyword pass is instant and explainable; the model only chooses among five, which a small model can do in a second. | Asking a small model to pick from 203 patterns, which overflows its context and attention. |
@@ -258,7 +262,7 @@ These are enforced by tests in `Tests/GuardrailTests.swift` and `Tests/ServiceTe
 
 ## Threading
 
-- `ResultPanelController.run(_:)` runs `rewrite` on a background queue (`.userInitiated`).
+- `ResultPanelController.run(_:)` runs `rewrite` on a background queue (`.userInitiated`). `askQuestion` does the same with `answerFollowUp` for the follow-up chat, with the same `generation` and stop function through a `Stopper`, so stopping also keeps its second run from starting, and a dialog still runs one model at a time.
 - `run` reads stdout and stderr through `readabilityHandler` on system queues, guarded by an `NSLock`. Progress callbacks arrive on those queues, and the panel hops to the main queue to update.
 - `WarmRunner` serializes requests with one lock and guards its state with another. Its stdout handler parses lines and calls `progress` before it signals the waiting `generate`, so the last update arrives before the result.
 - Each run has a `generation` number. Results and progress from an older run (after Try Again, or after the dialog closed) are ignored.

@@ -56,6 +56,14 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private var runningStatus = ""
     private var notice: String?
     private var popover: NSPopover?
+    // The follow-up chat under the result. Its turns live here only; nothing is saved.
+    private let chatBox = NSStackView()
+    private let transcript = NSTextView()
+    private let questionField = NSTextField()
+    private let askButton = NSButton(title: "Ask", target: nil, action: nil)
+    private var chatTurns: [ChatTurn] = []
+    private var resultAboveButtons: NSLayoutConstraint!
+    private var resultAboveChat: NSLayoutConstraint!
     var onClose: (() -> Void)?
     var onModelChange: (() -> Void)?
 
@@ -63,10 +71,10 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         self.source = source
         self.style = style
         self.warmRunner = warmRunner
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 660, height: 660),
                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         panel.title = style.dialogTitle
-        panel.minSize = NSSize(width: 520, height: 320)
+        panel.minSize = NSSize(width: 520, height: 460)
         panel.isReleasedWhenClosed = false
         // Panels hide when their app isn't frontmost, and macOS may not bring this app forward when
         // the service is called from another app. Stay visible; it's the only thing on screen.
@@ -133,7 +141,12 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         copyButton.keyEquivalent = "\r"
         copyButton.keyEquivalentModifierMask = .command // Return alone types a new line.
 
-        for view in [versionPopup, checkButton, fillButton, projectButton, modelPopup, patternButton, scroll, spinner, status, closeButton, againButton, copyButton] as [NSView] {
+        // Explain answers questions instead of rewriting, so the rewrite tools don't apply.
+        patternButton.isHidden = !style.isRewrite
+        projectButton.isHidden = !style.isRewrite
+        layoutChat()
+
+        for view in [versionPopup, checkButton, fillButton, projectButton, modelPopup, patternButton, scroll, chatBox, spinner, status, closeButton, againButton, copyButton] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
@@ -154,7 +167,9 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             scroll.topAnchor.constraint(equalTo: versionPopup.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -12),
+            chatBox.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            chatBox.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            chatBox.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -12),
             copyButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
             copyButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
             againButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
@@ -169,6 +184,42 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             status.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -12),
             status.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
         ])
+        // The result fills the space until the chat appears with the first result.
+        resultAboveButtons = scroll.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -12)
+        resultAboveChat = scroll.bottomAnchor.constraint(equalTo: chatBox.topAnchor, constant: -10)
+        resultAboveButtons.isActive = true
+        chatBox.isHidden = true
+    }
+
+    // A transcript and a one-line question field with Ask. Return in the field asks.
+    private func layoutChat() {
+        transcript.isEditable = false
+        transcript.isRichText = false
+        transcript.font = NSFont.systemFont(ofSize: 12)
+        transcript.textContainerInset = NSSize(width: 6, height: 6)
+        transcript.autoresizingMask = [.width]
+        let scroll = NSScrollView()
+        scroll.documentView = transcript
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.heightAnchor.constraint(equalToConstant: 140).isActive = true
+        questionField.placeholderString = style.isRewrite ? "Ask anything about the text or the result…" : "Ask anything about it…"
+        questionField.target = self
+        questionField.action = #selector(askQuestion(_:))
+        askButton.target = self
+        askButton.action = #selector(askQuestion(_:))
+        let label = NSTextField(labelWithString: "Ask a follow-up")
+        label.font = NSFont.boldSystemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        let row = NSStackView(views: [questionField, askButton])
+        row.spacing = 8
+        questionField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        chatBox.orientation = .vertical
+        chatBox.alignment = .leading
+        chatBox.spacing = 6
+        for view in [label, scroll, row] as [NSView] { chatBox.addArrangedSubview(view) }
+        scroll.widthAnchor.constraint(equalTo: chatBox.widthAnchor).isActive = true
+        row.widthAnchor.constraint(equalTo: chatBox.widthAnchor).isActive = true
     }
 
     // MARK: Running the model
@@ -184,6 +235,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         lastOperation = operation
         var config = loadConfig()
         if let chosenModel { config = config.choosing(chosenModel) }
+        config.maxTokens = style.maxTokens(base: config.maxTokens)
         let input: String
         switch operation {
         case .draft:
@@ -207,7 +259,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         let model = config.model.isEmpty ? (config.executable as NSString?)?.lastPathComponent ?? "" : config.model
         let verb: String = {
             switch operation {
-            case .draft: return "Rewriting"
+            case .draft: return style.isRewrite ? "Rewriting" : "Explaining"
             case .pattern(let p, _): return "Applying \(p.title)"
             case .polish: return "Polishing"
             case .project(let name, _): return "Rewriting with \(name)"
@@ -216,6 +268,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         runningStatus = "\(verb) with \(config.backend.displayName)\(model.isEmpty ? "" : " · \((model as NSString).lastPathComponent)")"
         notice = nil
         setRunning(true, status: runningStatus + "…")
+        showTranscript()  // A follow-up this run cut off.
         textView.string = ""
         startClock()
         let warm = warmRunner(config)
@@ -251,11 +304,11 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                 case .success(let text):
                     self.versions.append(Version(text: text, label: "\(self.versions.count + 1) · \(operation.label)", author: config.model))
                     self.showVersion(self.versions.count - 1)
-                    self.setRunning(false, status: self.notice ?? "Done in \(seconds)s. Edit if needed, then copy (⌘↩).")
+                    self.setRunning(false, status: self.notice ?? "Done in \(seconds)s. \(self.style.isRewrite ? "Edit if needed, then copy (⌘↩)." : "Ask a follow-up below.")")
                     self.window?.makeFirstResponder(self.textView)
                 case .failure(let error):
                     self.textView.string = error.localizedDescription
-                    self.setRunning(false, status: "Couldn't rewrite the text.", failed: true)
+                    self.setRunning(false, status: self.style.isRewrite ? "Couldn't rewrite the text." : "Couldn't explain the text.", failed: true)
                 }
                 next?()
             }
@@ -284,10 +337,17 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         patternButton.isEnabled = ready
         modelPopup.isEnabled = !running
         projectButton.isEnabled = !running
-        checkButton.isHidden = !ready
+        checkButton.isHidden = !ready || !style.isRewrite
         fillButton.isHidden = true
         versionPopup.isEnabled = !running && !versions.isEmpty
         versionPopup.isHidden = versions.isEmpty
+        askButton.isEnabled = !running
+        questionField.isEnabled = !running
+        if !versions.isEmpty && chatBox.isHidden {
+            chatBox.isHidden = false
+            resultAboveButtons.isActive = false
+            resultAboveChat.isActive = true
+        }
         if ready { updateCheck() }
     }
 
@@ -495,7 +555,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         if result.confirmCount > 0 { title += " · \(result.confirmCount) to confirm" }
         checkButton.title = title
         checkButton.contentTintColor = result.score >= 85 ? .systemGreen : result.score >= 60 ? .systemOrange : .systemRed
-        fillButton.isHidden = result.confirmCount == 0
+        fillButton.isHidden = result.confirmCount == 0 || !style.isRewrite
     }
 
     @objc private func showCheck(_ sender: NSButton) {
@@ -601,6 +661,68 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         popover.contentViewController = controller
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
         self.popover = popover
+    }
+
+    // MARK: Follow-up chat
+
+    // Asks about the highlighted text and the result as shown now, edits included. Runs like any
+    // other step: one model at a time, stopped by Close or Try Again, late replies ignored.
+    @objc private func askQuestion(_ sender: Any?) {
+        let question = questionField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty, !isRunning else { return }
+        generation += 1
+        let mine = generation
+        var config = loadConfig()
+        config.maxTokens = style.maxTokens(base: config.maxTokens)
+        if let missing = missingModel(config) {
+            showTranscript(adding: "You: \(question)\n\(missing.localizedDescription)")
+            return
+        }
+        runningStatus = "Answering with \(config.backend.displayName)"
+        notice = nil
+        setRunning(true, status: runningStatus + "…")
+        startClock()
+        showTranscript(adding: "You: \(question)\nAssistant: …")
+        let warm = warmRunner(config)
+        let shown = textView.string, history = chatTurns  // The result as it is now, edits included.
+        // It may run the model twice; stopping must also keep the second run from starting.
+        let stopper = Stopper()
+        stopRunning = { stopper.stop() }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try answerFollowUp(question, style: self.style, source: self.source, result: shown, history: history,
+                                                     config: config, warm: warm, started: { stopper.running($0) }, progress: { soFar in
+                DispatchQueue.main.async {
+                    guard mine == self.generation, self.isRunning else { return }
+                    self.showTranscript(adding: "You: \(question)\nAssistant: \(soFar)")
+                }
+            }, notice: { message in
+                DispatchQueue.main.async { if mine == self.generation { self.notice = message } }
+            }, isStopped: { stopper.isStopped }) }
+            DispatchQueue.main.async {
+                guard mine == self.generation else { return }
+                self.stopRunning = nil
+                let seconds = Int(Date().timeIntervalSince(self.startedAt))
+                switch result {
+                case .success(let answer):
+                    self.chatTurns.append(ChatTurn(question: question, answer: answer))
+                    self.questionField.stringValue = ""
+                    self.showTranscript()
+                    self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.")
+                case .failure(let error):
+                    // The question stays in the field, to ask again.
+                    self.showTranscript(adding: "You: \(question)\n\(error.localizedDescription)")
+                    self.setRunning(false, status: "Couldn't answer. Ask again, or pick another model.")
+                }
+                self.window?.makeFirstResponder(self.questionField)
+            }
+        }
+    }
+
+    // The answered turns, then `pending` (a question being answered, or one that failed).
+    private func showTranscript(adding pending: String? = nil) {
+        let turns = chatTurns.map { "You: \($0.question)\nAssistant: \($0.answer)" }
+        transcript.string = (turns + [pending].compactMap { $0 }).joined(separator: "\n\n")
+        transcript.scrollToEndOfDocument(nil)
     }
 
     // MARK: Buttons

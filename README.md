@@ -31,6 +31,9 @@ Wherever your notes leave something out, the model writes `[CONFIRM: what to ask
 | **Rewrite as Code Review Request** | CHANGE · CONTEXT · REVIEW FOCUS · OUT OF SCOPE · TESTING · DONE WHEN |
 | **Rewrite as Commit Message** | An imperative subject of at most 72 characters, and a body that says what and why |
 | **Rewrite as Agent Prompt (Replace Selection)** | The agent prompt, replacing the highlighted text directly, with no dialog. A small window shows progress. |
+| **Explain This for Me** | An in-depth explanation of the highlighted text or code, or of text and code files right-clicked in Finder, in small easy-to-scan pieces: TL;DR · WHAT IT IS · HOW IT WORKS · KEY PARTS · WATCH OUT FOR · NEXT STEPS |
+
+Every dialog has an **Ask a follow-up** box under the result. Ask anything about the text or the result; each question is sent to the same local model with the highlighted text, the result as it is now (edits included) and the conversation so far. The conversation isn't saved.
 
 ## The dialog
 

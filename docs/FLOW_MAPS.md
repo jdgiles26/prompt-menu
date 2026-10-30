@@ -17,6 +17,9 @@ Diagrams of every path through Prompt Menu. They render on GitHub. Names in `cod
 13. [Replace Selection](#13-replace-selection)
 14. [Keeping the model loaded](#14-keeping-the-model-loaded)
 15. [Applying an agentic pattern](#15-applying-an-agentic-pattern)
+16. [Review: jury, then hardening](#16-review-jury-then-hardening)
+17. [Explain This for Me](#17-explain-this-for-me)
+18. [Follow-up chat](#18-follow-up-chat)
 
 ---
 
@@ -49,7 +52,7 @@ sequenceDiagram
     participant BG as Background queue
 
     U->>App: Highlight text, right-click
-    U->>OS: Services → Rewrite as Agent Prompt / Bug Report / Code Review Request / Commit Message
+    U->>OS: Services → Rewrite as Agent Prompt / Bug Report / Code Review Request / Commit Message (Explain This for Me: flow 17)
     OS->>SP: rewriteAs…(pasteboard, userData, error)
     alt pasteboard has no text, or only whitespace
         SP-->>OS: error.pointee = "There's no text to rewrite…"
@@ -411,3 +414,56 @@ flowchart TD
 ```
 
 State machine (`ReviewMachine`): `candidates → judging → hardening(0) → hardening(1) → hardening(2) → done`, and `stopped` from any step before `done`. Any other move is rejected.
+
+## 17. Explain This for Me
+
+The sixth Services item. It accepts highlighted text, like the others, and also text and code files right-clicked in Finder (`NSSendFileTypes`). Only the files the user picked are read, up to `maxInputCharacters`, and nothing is written.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant OS as macOS Services (pbs)
+    participant SP as ServiceProvider
+    participant AD as AppDelegate
+    participant P as ResultPanelController
+
+    U->>OS: Services → Explain This for Me (text, or files in Finder)
+    OS->>SP: explainThisForMe(pasteboard, userData, error)
+    alt file URLs on the pasteboard
+        SP->>SP: explainInput(files:) → "File: name" + text, cut to 8,000 characters
+        alt not text, a folder, or unreadable
+            SP-->>OS: error.pointee = "Couldn't read … as text…"
+        end
+    else text
+        SP->>SP: text(on:error:) (empty → error)
+    end
+    SP->>AD: onText(text, .explain)
+    AD->>P: ResultPanelController(source: text, style: .explain)
+    P->>P: explainPrompt, maxTokens(base:) ≥ 2048, "Explaining with …"
+    P->>U: Explanation · versions · model menu · Ask a follow-up · Copy · Try Again · Close
+```
+
+The pattern, Fill Gaps, Add Project and check controls are hidden, because `Style.explain.isRewrite` is false. The check still scores the sections (with no dropped-facts penalty) for Compare and Review.
+
+## 18. Follow-up chat
+
+Under the result in every dialog, shown once the first result is in.
+
+```mermaid
+flowchart TD
+    A([Ask, or Return in the field]) --> B{a model running?}
+    B -- yes --> Z([nothing: Ask is disabled])
+    B -- no --> C["answerFollowUp · system prompt: chatSystemPrompt(style:) + chatContext<br/>(newest turns ≤ 3,000 · start of the result ≤ 3,000 · highlighted text in the rest, ≤ 8,000 · total ≤ maxChatCharacters)<br/>prompt: the question alone"]
+    C --> D["rewrite(question, …) · same generation and stop function as run(_:)"]
+    D --> E[answer streams into the transcript]
+    E --> X{stopped? if not: isNonAnswer<br/>(refusal in the first sentence, context echoed)<br/>or an earlier answer repeated for a new question?}
+    X -- yes --> Y["rewrite(question, …) again without the context · status says so"]
+    Y --> F
+    X -- no --> F{result}
+    F -- answer --> G[ChatTurn added · field cleared]
+    F -- error --> H[error shown in the transcript · question kept in the field]
+    D -. Close or Try Again .-> I([Stopper: the run stops, no second run starts, the partial answer is dropped])
+```
+
+The turns are kept in the dialog only. Closing it forgets them.

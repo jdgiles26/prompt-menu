@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Explain This for Me**, a sixth Services item: an in-depth explanation of the highlighted text or code, or of text and code files right-clicked in Finder (the first 8,000 characters), with the point first and the detail in short, easy-to-scan pieces. It has room for 2,048 tokens, or the setting if that's higher.
+- **Ask a follow-up** in every dialog: a small chat under the result that answers any question about the text and the result, with the conversation so far as context. It uses the same local model and is never saved.
 - **Model menu** in the dialog: the models already on this Mac, MLX and GGUF, with their sizes. If the saved model was deleted, the dialog offers these instead of failing. Nothing is downloaded.
 - **Fill Gaps…** answers `[CONFIRM: …]` questions in place, without a model, with an optional Polish pass.
 - **Compare Models…** runs the draft with each ticked model, one at a time, after an estimate.
