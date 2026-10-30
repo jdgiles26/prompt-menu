@@ -42,6 +42,19 @@ func saveKeepLoadedMinutes(_ minutes: Int, to defaults: UserDefaults = settings)
     defaults.set(minutes.clamped(to: keepLoadedRange), forKey: "keepLoadedMinutes")
 }
 
+// Extra folders searched for GGUF models, besides the Hugging Face cache and defaultModelFolders().
+func modelFolders(from defaults: UserDefaults = settings) -> [String] {
+    var seen = Set<String>()
+    return (defaults.array(forKey: "modelFolders") as? [String] ?? [])
+        .map { ($0.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath }
+        .filter { !$0.isEmpty && seen.insert($0).inserted }
+}
+
+func saveModelFolders(_ folders: [String], to defaults: UserDefaults = settings) {
+    defaults.set(folders, forKey: "modelFolders")
+    defaults.set(modelFolders(from: defaults), forKey: "modelFolders")
+}
+
 extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
 }

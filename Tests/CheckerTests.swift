@@ -52,3 +52,11 @@ func testCheckerCommitMessage() throws {
     let long = checkPrompt(String(repeating: "x", count: 80), source: "", style: .commitMessage)
     checkEqual(long.problems, ["The subject line is 80 characters; keep it to 72."])
 }
+
+// A model stuck in a loop repeats every heading. Finding the next heading used indices from a copy
+// of the text, which trapped on this ("Range requires lowerBound <= upperBound").
+func testCheckerRepeatedHeadings() throws {
+    let looped = "ROLE: a\nDONE WHEN: the test passes.\nROLE: a\nDONE WHEN: the test passes."
+    let result = checkPrompt(looped, source: "", style: .agentPrompt)
+    check(result.doneWhenCheckable, "DONE WHEN is read up to the next heading")
+}

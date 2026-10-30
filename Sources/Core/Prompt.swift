@@ -29,6 +29,7 @@ enum RewriteError: Error, Equatable {
     case emptyInput
     case executableNotFound(String)
     case modelNotSet
+    case modelMissing(String)  // Set, but not on this Mac: deleted, or never downloaded.
     case failed(status: Int32, message: String)
     case timedOut
     case emptyOutput
@@ -42,6 +43,8 @@ extension RewriteError: LocalizedError {
         case .executableNotFound(let name):
             return "Couldn't find \(name). Install it, or set its full path in Prompt Menu's settings."
         case .modelNotSet: return "No model is set. Choose one in Prompt Menu's settings."
+        case .modelMissing(let model):
+            return "\(model) isn't on this Mac. It may have been deleted. Choose a model that is from the Model menu, or in Prompt Menu's settings."
         case .failed(let status, let message):
             return "The model runner stopped with exit code \(status).\n\n\(message.isEmpty ? "It printed no error." : message)"
         case .timedOut: return "The model took too long and was stopped. Try a smaller model or shorter text."
@@ -76,6 +79,8 @@ func cleanOutput(_ raw: String) -> String {
         .filter { line in !noise.contains { line.range(of: $0, options: .regularExpression) != nil } }
         .joined(separator: "\n")
         .trimmingCharacters(in: .whitespacesAndNewlines)
+    // llama.cpp may also put its end marker at the end of the last line.
+    if text.hasSuffix("[end of text]") { text = String(text.dropLast("[end of text]".count)).trimmingCharacters(in: .whitespacesAndNewlines) }
     // "Here is the rewritten prompt:" on a line of its own, which small models add anyway.
     if let announcement = text.range(of: "^(?:(?:sure|okay|ok|certainly)[!,. ]*)?(?:here is|here's|below is)[^\\n]{0,60}:[ \\t]*\\n",
                                      options: [.regularExpression, .caseInsensitive]) {

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- **Model menu** in the dialog: the models already on this Mac, MLX and GGUF, with their sizes. If the saved model was deleted, the dialog offers these instead of failing. Nothing is downloaded.
+- **Fill Gaps…** answers `[CONFIRM: …]` questions in place, without a model, with an optional Polish pass.
+- **Compare Models…** runs the draft with each ticked model, one at a time, after an estimate.
+- **Review…** has the models judge the versions blind (shuffled, asked twice in reverse order, no votes for their own draft, the check as one more voter), then harden the winner as security, scope and verifiability reviewers. Only edits that keep the check score and every fact are kept. **Review Log** shows each step.
+- **Add Project…** adds the headings and commands from a chosen folder's AGENTS.md, CLAUDE.md and README.
+- llama.cpp: `--log-disable` is no longer passed; with `llama-completion` build 10470 it also hid the reply.
+- Fixed: the check crashed on a prompt that repeats a heading (a model stuck in a loop).
+
 ## 0.3.0
 
 - Three more Services items: **Rewrite as Bug Report**, **Rewrite as Code Review Request** and **Rewrite as Commit Message**, each with its own sections.

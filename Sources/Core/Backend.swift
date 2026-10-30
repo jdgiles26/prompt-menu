@@ -84,7 +84,7 @@ func invocation(for config: BackendConfig, input: String, searchDirs: [String]) 
             "-m", model,
             "-sys", config.systemPrompt,
             "-p", input,
-            "-cnv", "-st", "--no-display-prompt", "--log-disable",
+            "-cnv", "-st", "--no-display-prompt",
             "-n", tokens, "--temp", temp,
         ], environment: [:])
     }

@@ -65,9 +65,17 @@ flowchart LR
 | `Sources/Core/WarmRunner.swift` | `WarmRunner`: the MLX worker process, its JSON-lines protocol, one request at a time, cancel, timeout, and unloading after `idleTimeout`. `interpreter(ofScript:)` finds the Python that has mlx-lm. | Prompt |
 | `Sources/Core/Checker.swift` | `checkPrompt` and `PromptCheck`: missing sections, dropped facts, open `[CONFIRM: …]` questions, a checkable DONE WHEN, and a score with fixed point costs. No model. | Style |
 | `Sources/Core/Patterns.swift` | `AgenticPattern`, loading the catalog, `rankPatterns` and `shortlist` (keyword fit), `searchPatterns`, the model's typed choice (`patternChoicePrompt`, `parseChoice`), and `patternSystemPrompt`. | Style |
+| `Sources/Core/Models.swift` | Finding models already on this Mac (`LocalModel`, `localModels`, `modelSearchFolders`), `missingModel` for a deleted model, `BackendConfig.choosing`, and the Compare estimate and memory fit. Reads the file system only. | Backend, Settings |
+| `Sources/Core/Fill.swift` | Fill Gaps: `confirmQuestions`, `fill` (exact replacement, no model) and the Polish instructions. | — |
+| `Sources/Core/Project.swift` | Add Project: `projectContext(folder:)` keeps the headings and commands of a chosen folder's AGENTS.md, CLAUDE.md and README; `withProjectContext`. | — |
+| `Sources/Core/Review.swift` | The Review pipeline: the blind jury (`juryPrompt`, `parseVote`, `shuffledOrder`, `agreedVote`, `judgeWeight`, `juryWinner`), hardening (`HardenRole`, `parseHardenReply`, `removeEchoedLines`, `removePreamble`, `hardenVerdict`), the state machine (`ReviewMachine`), `ReviewPipeline`, the log with `lineDiff`, and the estimate. Model calls are injected, so all of it is tested without a model. | Checker, Patterns, Models |
 | `Sources/Core/Settings.swift` | Reading and writing preferences (`loadConfig`, `saveConfig`, `keepLoadedMinutes`), the default model, and the allowed ranges. | Backend |
 | `Sources/PromptMenu/Service.swift` | `ServiceProvider`, the object macOS calls for the five Services items. | Core |
-| `Sources/PromptMenu/ResultPanel.swift` | One dialog per request: spinner and timer, streamed text, versions, the check badge, the Agentic Pattern button, Copy, Try Again and Close, and stopping the model when closed. | Core |
+| `Sources/PromptMenu/ResultPanel.swift` | One dialog per request: spinner and timer, streamed text, versions, the check badge, the model menu (with Compare Models, Review and Review Log), Fill Gaps, Add Project, the Agentic Pattern button, Copy, Try Again and Close, and stopping the model when closed. | Core |
+| `Sources/PromptMenu/ModelMenu.swift` | The model menu items (`modelMenuItems`, `ActionMenuItem`) and `modelsOnThisMac`. | Core |
+| `Sources/PromptMenu/ModelsSheet.swift` | The sheet for ticking models, with an estimate, used by Compare Models and Review. | Core |
+| `Sources/PromptMenu/FillGapsSheet.swift` | One field per `[CONFIRM: …]` question, and the Polish checkbox. | Core |
+| `Sources/PromptMenu/ReviewLogSheet.swift` | The read-only Review Log. | — |
 | `Sources/PromptMenu/PatternPicker.swift` | The pattern popover: the shortlist, search over the whole catalog, the model's ★ pick, Use when / Avoid when, Apply. | Core |
 | `Sources/PromptMenu/SettingsWindow.swift` | The settings window, which checks the runner live, the keep-loaded time, and Try It. | Core |
 | `Sources/PromptMenu/main.swift` | `AppDelegate`: wiring, the main menu, Replace Selection and its progress window, the kept-loaded worker and its menu-bar item, when to show settings, and when to quit. | everything |
@@ -164,7 +172,7 @@ These command lines are the contract with each runner, and `Tests/BackendTests.s
 |---|---|---|---|
 | `mlx` | `mlx_lm.generate` | `--model M --system-prompt S --prompt TEXT --max-tokens N --temp T --verbose True` | `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONUNBUFFERED=1` |
 | `llamafile` | `/bin/sh` + `llamafile` path | `[-m M] --cli -p "S\n\nText to rewrite:\nTEXT" -n N --temp T` | — |
-| `llama.cpp` | `llama-completion` | `-m M -sys S -p TEXT -cnv -st --no-display-prompt --log-disable -n N --temp T` | — |
+| `llama.cpp` | `llama-completion` | `-m M -sys S -p TEXT -cnv -st --no-display-prompt -n N --temp T` | — |
 
 Why they differ:
 
@@ -232,6 +240,7 @@ The score is 100 minus the costs, at least 0. It measures "can I hand this to an
 | A plain `swiftc` build and a home-made test runner | No Xcode project to maintain, and XCTest isn't part of the Command Line Tools. Same approach as Finder Menu. | SwiftPM or an Xcode project. |
 | The app quits when idle | Python and the model's memory are released, and there's nothing to keep updated. | Staying resident as a menu-bar app. |
 | The built-in prompt is saved as `""` | A better prompt in a later version reaches everyone who didn't customize theirs. | Saving the full text. |
+| Review: a blind jury with bias controls, then hardening that can only keep safe edits | Small models judge and edit unreliably (in testing, both 3B and 1.2B judges answered "B" in both orders, and edits dropped sections or repeated the prompt). Shuffled letters, a reversed second pass, no self-votes and the checker as a voter keep a bad judge from deciding; an edit is kept only if the check score holds, no fact is lost and no section repeats, after removing instruction lines the model echoed. Judges under 3.5 GB (about 7B at 4 bits) count half. | Trusting one model's pick, or requiring a 7B+ judge (most 8 GB Macs can't run two). |
 | `cleanOutput` is safe to run on partial text | It's called on every streamed chunk, so it never shows half of something it would remove later (such as an unclosed `<think>`). | Cleaning only at the end, which would flash runner noise while streaming. |
 
 ## Invariants

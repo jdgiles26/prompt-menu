@@ -38,6 +38,8 @@ func testCleanOutput() throws {
     checkEqual(cleanOutput("==========\nROLE: d"), "ROLE: d")
     // llama.cpp marks the end.
     checkEqual(cleanOutput("ROLE: dev\n\n[end of text]\n"), "ROLE: dev")
+    // With --no-display-prompt, llama.cpp puts it at the end of the last line (seen with build 10470).
+    checkEqual(cleanOutput("DONE WHEN: tests pass. [end of text]\n\n"), "DONE WHEN: tests pass.")
     // A reply wrapped whole in one code fence is unwrapped; fences inside are kept.
     checkEqual(cleanOutput("```markdown\nROLE: dev\n```"), "ROLE: dev")
     checkEqual(cleanOutput("ROLE: dev\n```sh\nls\n```"), "ROLE: dev\n```sh\nls\n```")

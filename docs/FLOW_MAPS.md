@@ -104,7 +104,7 @@ flowchart TD
     M -- no --> B{backend}
     B -- mlx --> MLX["mlx_lm.generate --model --system-prompt --prompt<br/>--max-tokens --temp --verbose True<br/>env HF_HUB_OFFLINE=1, PYTHONUNBUFFERED=1"]
     B -- llamafile --> LF["/bin/sh llamafile [-m model] --cli<br/>-p combinedPrompt -n --temp"]
-    B -- llama.cpp --> LC["llama-completion -m -sys -p<br/>-cnv -st --no-display-prompt --log-disable -n --temp"]
+    B -- llama.cpp --> LC["llama-completion -m -sys -p<br/>-cnv -st --no-display-prompt -n --temp"]
 ```
 
 Search order in `standardSearchDirs`: `/opt/homebrew/bin` → `/usr/local/bin` → `~/.local/bin` → `~/bin` → `~/Library/Python/*/bin` (newest first) → `$PATH`, without duplicates.
@@ -184,6 +184,12 @@ stateDiagram-v2
     Done --> Done: edit text → check badge updates
     Done --> Done: pick a version → its text and check
     Done --> Running: Agentic Pattern… → Apply<br/>(edits saved as a version first)
+    Done --> Running: Model menu → a model → repeats the last step with it
+    Done --> Running: Compare Models… → one draft per ticked model
+    Done --> Running: Review… → jury, then hardening (diagram 16)
+    Done --> Running: Add Project… → first draft with the project's context
+    Done --> Done: Fill Gaps… → answers replace [CONFIRM: …], new version
+    Failed --> Running: a model picked from the Model menu (deleted model)
     Failed --> Done: pick an earlier version
     Done --> Closed: Copy (⌘↩) → pasteboard
     Done --> Closed: Close or Esc
@@ -376,3 +382,32 @@ flowchart TD
     L -- no --> M[pick an earlier version, or Try Again]
     L -- yes --> N([Copy])
 ```
+
+## 16. Review: jury, then hardening
+
+```mermaid
+flowchart TD
+    A([Review… → tick models → Review]) --> B[candidates: the dialog's versions<br/>failed ones left out, repeats once]
+    B --> C{two or more models<br/>and candidates?}
+    C -- no --> D[the check picks the winner<br/>the log says why]
+    C -- yes --> E["each judge: candidates as A, B… in a seeded shuffle<br/>'letter + confidence' → parseVote"]
+    E --> F{ask twice?}
+    F -- yes --> G[same judge, reversed order<br/>different picks → abstains (position bias)]
+    F -- no --> H
+    G --> H["juryWinner: Borda, checker ranks all,<br/>judges' pick × confidence × weight (½ under 3.5 GB)<br/>no votes for own draft · ties → check score"]
+    D --> I
+    H --> I[winner]
+    I --> J["harden: Security & safety → Scope → Verifiability<br/>models round-robin · CRITIQUE + REVISED PROMPT"]
+    J --> K["repair: removeEchoedLines, removePreamble"]
+    K --> L{"hardenVerdict: changed, no fact lost,<br/>score held, no section repeated?"}
+    L -- yes --> M[kept → new version 'Hardened: role']
+    L -- no --> N[discarded, reason in the log]
+    M --> O{more roles?}
+    N --> O
+    O -- yes --> J
+    O -- no --> P([done: final version shown · Review Log])
+    E -. Close or Try Again .-> Q([stopped: everything so far kept])
+    J -. Close or Try Again .-> Q
+```
+
+State machine (`ReviewMachine`): `candidates → judging → hardening(0) → hardening(1) → hardening(2) → done`, and `stopped` from any step before `done`. Any other move is rejected.

@@ -1,10 +1,12 @@
 import Cocoa
 
 // Which local runner and model to use. Shown when Prompt Menu is opened directly.
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSMenuDelegate {
     private let backendPopup = NSPopUpButton()
     private let runnerField = NSTextField()
     private let modelField = NSTextField()
+    private let modelPicker = NSPopUpButton(frame: .zero, pullsDown: true)
+    private let foldersField = NSTextField()
     private let tokensField = NSTextField()
     private let keepLoadedField = NSTextField()
     private let hint = NSTextField(wrappingLabelWithString: "")
@@ -12,7 +14,7 @@ final class SettingsWindowController: NSWindowController {
     var onSave: (() -> Void)?
 
     init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 340),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 400),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Prompt Menu"
         window.isReleasedWhenClosed = false
@@ -23,6 +25,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    // A model was picked from a menu elsewhere; show it here too.
+    func reload() { show(loadConfig()) }
 
     private func layout(in window: NSWindow) {
         for backend in Backend.allCases { backendPopup.addItem(withTitle: backend.displayName) }
@@ -38,11 +43,21 @@ final class SettingsWindowController: NSWindowController {
         hint.isSelectable = true
         // Re-check the runner path as it's typed.
         NotificationCenter.default.addObserver(self, selector: #selector(updateHints), name: NSControl.textDidChangeNotification, object: runnerField)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateHints), name: NSControl.textDidChangeNotification, object: modelField)
+        modelPicker.controlSize = .small
+        modelPicker.addItem(withTitle: "Found on this Mac")
+        modelPicker.menu?.delegate = self
+        modelPicker.toolTip = "Models already on this Mac. Picking one also picks a runner that can use it."
+        foldersField.placeholderString = "Other folders with .gguf files, separated by :"
+        foldersField.toolTip = "Searched as well as the Hugging Face cache, ~/models, ~/llama.cpp/models and LM Studio's folder."
+        let addFolder = NSButton(title: "Add…", target: self, action: #selector(addFolder(_:)))
+        addFolder.controlSize = .small
 
         let grid = NSGridView(views: [
             [NSTextField(labelWithString: "Runner:"), backendPopup],
             [NSTextField(labelWithString: "Runner path:"), runnerField],
-            [NSTextField(labelWithString: "Model:"), modelField],
+            [NSTextField(labelWithString: "Model:"), NSStackView(views: [modelField, modelPicker])],
+            [NSTextField(labelWithString: "Model folders:"), NSStackView(views: [foldersField, addFolder])],
             [NSTextField(labelWithString: "Max tokens:"), tokensField],
             [NSTextField(labelWithString: "Keep loaded:"), NSStackView(views: [keepLoadedField, keepLoadedNote])],
             [NSGridCell.emptyContentView, hint],
@@ -50,7 +65,11 @@ final class SettingsWindowController: NSWindowController {
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 10
-        grid.column(at: 1).width = 400
+        grid.column(at: 1).width = 480
+        // In a stack view a text field shrinks to nothing unless given a width.
+        modelPicker.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        modelField.widthAnchor.constraint(equalToConstant: 340).isActive = true
+        foldersField.widthAnchor.constraint(equalToConstant: 400).isActive = true
         tokensField.widthAnchor.constraint(equalToConstant: 80).isActive = true
         keepLoadedField.widthAnchor.constraint(equalToConstant: 44).isActive = true
 
@@ -86,6 +105,7 @@ final class SettingsWindowController: NSWindowController {
         backendPopup.selectItem(at: Backend.allCases.firstIndex(of: config.backend) ?? 0)
         runnerField.stringValue = config.executable ?? ""
         modelField.stringValue = config.model
+        foldersField.stringValue = modelFolders().joined(separator: ":")
         tokensField.integerValue = config.maxTokens
         keepLoadedField.integerValue = keepLoadedMinutes()
         updateHints()
@@ -102,6 +122,7 @@ final class SettingsWindowController: NSWindowController {
             found += findExecutable(named: backend.executableName, in: standardSearchDirs()).map { "✓ found \($0)" }
                 ?? "✗ \(backend.executableName) not found"
         }
+        found += "\nModel: " + modelStatus(editedConfig)
         defer { hint.stringValue = found + "\n" + hint.stringValue }
         switch backend {
         case .mlx:
@@ -123,6 +144,27 @@ final class SettingsWindowController: NSWindowController {
         updateHints()
     }
 
+    private func modelStatus(_ config: BackendConfig) -> String {
+        switch missingModel(config) {
+        case nil: return config.model.isEmpty ? "✓ bundled in the runner" : "✓ on this Mac"
+        case .modelMissing?: return "✗ not on this Mac. Pick one from “Found on this Mac”."
+        default: return "✗ not set"
+        }
+    }
+
+    private var editedFolders: [String] {
+        foldersField.stringValue.split(separator: ":").map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    @objc private func addFolder(_ sender: Any?) {
+        let open = NSOpenPanel()
+        open.canChooseDirectories = true
+        open.canChooseFiles = false
+        open.prompt = "Add"
+        guard open.runModal() == .OK, let url = open.url else { return }
+        foldersField.stringValue = (editedFolders + [url.path]).filter { !$0.isEmpty }.joined(separator: ":")
+    }
+
     private var editedConfig: BackendConfig {
         var config = loadConfig()
         config.backend = selectedBackend
@@ -137,6 +179,7 @@ final class SettingsWindowController: NSWindowController {
     private func saveAll() {
         saveConfig(editedConfig)
         saveKeepLoadedMinutes(keepLoadedField.integerValue)
+        saveModelFolders(editedFolders)
         onSave?()
     }
 
@@ -148,5 +191,30 @@ final class SettingsWindowController: NSWindowController {
     @objc private func tryIt(_ sender: Any?) {
         saveAll()
         onTryIt?("add a dark mode toggle to the settings page of our react app, it should remember the choice. dont touch the login flow")
+    }
+}
+
+extension SettingsWindowController {
+    // Rebuilt each time it opens, searching the folders as typed, not just as saved.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        menu.addItem(withTitle: "Found on this Mac", action: nil, keyEquivalent: "")  // A pull-down's title item.
+        let config = editedConfig
+        let models = localModels(folders: modelSearchFolders(current: config, extra: editedFolders.map { ($0 as NSString).expandingTildeInPath }))
+        if models.isEmpty { menu.addItem(withTitle: "No models found", action: nil, keyEquivalent: "").isEnabled = false }
+        for model in models {
+            let item = ActionMenuItem(title: model.label) { [weak self] in self?.pick(model) }
+            item.toolTip = model.id
+            item.state = model.isCurrent(in: config) ? .on : .off
+            menu.addItem(item)
+        }
+    }
+
+    private func pick(_ model: LocalModel) {
+        let config = editedConfig.choosing(model)
+        backendPopup.selectItem(at: Backend.allCases.firstIndex(of: config.backend) ?? 0)
+        runnerField.stringValue = config.executable ?? ""
+        modelField.stringValue = config.model
+        updateHints()
     }
 }

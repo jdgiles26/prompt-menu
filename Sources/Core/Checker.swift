@@ -47,18 +47,18 @@ func checkPrompt(_ prompt: String, source: String, style: Style) -> PromptCheck 
     return result
 }
 
-// "ROLE:", "**ROLE:**", "**Role**:", "## Role:" at the start of a line.
-private func headingRange(_ section: String, in text: String) -> Range<String.Index>? {
+// "ROLE:", "**ROLE:**", "**Role**:", "## Role:" at the start of a line, searching from `from`.
+private func headingRange(_ section: String, in text: String, from: String.Index? = nil) -> Range<String.Index>? {
     let name = NSRegularExpression.escapedPattern(for: section).replacingOccurrences(of: " ", with: "\\s+")
-    return text.range(of: "(?im)^[\\s#>*_-]*\(name)[\\s*_]*:", options: .regularExpression)
+    return text.range(of: "(?im)^[\\s#>*_-]*\(name)[\\s*_]*:", options: .regularExpression, range: (from ?? text.startIndex)..<text.endIndex)
 }
 
 // The text under a heading, up to the next of the style's headings.
 private func sectionText(_ section: String, in text: String, style: Style) -> String? {
     guard let start = headingRange(section, in: text) else { return nil }
-    let rest = text[start.upperBound...]
-    let next = style.sections.compactMap { headingRange($0, in: String(rest)) }.map { $0.lowerBound }.min()
-    return String(rest[..<(next ?? rest.endIndex)])
+    // Search the text itself from here: indices from a copy of the rest don't belong to it.
+    let next = style.sections.compactMap { headingRange($0, in: text, from: start.upperBound) }.map { $0.lowerBound }.min()
+    return String(text[start.upperBound..<(next ?? text.endIndex)])
 }
 
 private let checkableWords = ["pass", "fail", "return", "show", "display", "print", "exist", "succeed", "match", "equal",

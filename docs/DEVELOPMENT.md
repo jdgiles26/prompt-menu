@@ -68,6 +68,10 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 14. Close every window. With keep-loaded at 0, `pgrep -f "MacOS/PromptMenu"` prints nothing right away; otherwise the app quits when the model unloads (set Keep loaded to 1 to check in a minute).
 15. Open two dialogs: the second is offset from the first, not exactly on top of it.
 16. Set a bad runner path in settings. The hint shows ✗. Try It shows "Couldn't find …".
+17. **Model menu**: set `model` to a name that isn't on disk (`defaults write local.promptmenu model nope/missing`). A dialog says the model may have been deleted and opens the Model menu, with the missing one greyed out and ticked. Picking a model runs the draft with it.
+18. **Fill Gaps…** shows only when the text has `[CONFIRM: …]`. Answer one: a `Filled` version replaces just that marker.
+19. **Add Project…**: pick this repository. A `With prompt-menu` version mentions `scripts/test.sh` in its context.
+20. **Compare Models…** and **Review…** (Model menu) are greyed out while a model runs; Review is greyed out with no successful version, and **Review Log** until a review has run. Review with two models: the status shows judging, then each role; kept edits appear as `Hardened: …` versions; Review Log lists votes, the winner and a diff per role. Close during a review: no runner keeps running (`pgrep -f "llama-completion|mlx_lm.generate"`).
 
 To trigger the service without clicking, from a small Swift script:
 

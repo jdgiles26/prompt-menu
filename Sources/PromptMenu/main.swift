@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var replacing = false
     private var warm: WarmRunner?
     private var statusItem: NSStatusItem?
+    private let modelMenus = NSHashTable<NSMenu>.weakObjects()
     private lazy var services = ServiceProvider(
         onText: { [weak self] text, style in
             self?.handledService = true
@@ -42,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func showRewrite(of text: String, style: Style) {
         let panel = ResultPanelController(source: text, style: style) { [weak self] config in self?.warmRunner(for: config) }
+        panel.onModelChange = { [weak self] in self?.modelChanged() }
         panel.onClose = { [weak self, weak panel] in
             self?.panels.removeAll { $0 === panel }
             self?.finish()
@@ -64,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         replacing = true
         defer { replacing = false; finish() }
         let config = loadConfig()
+        // No dialog to pick a model from here, so say which is missing and where to choose another.
+        if let missing = missingModel(config) { return .failure(missing) }
         let warm = warmRunner(for: config)
         let progress = ProgressWindow(text: "Rewriting with \(config.backend.displayName)…")
         defer { progress.close() }
@@ -124,16 +128,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        if modelMenus.contains(menu) {
+            modelMenuItems { [weak self] _ in self?.modelChanged() }.forEach(menu.addItem)
+            return
+        }
         let minutes = max(1, Int(((warm?.unloadsAt?.timeIntervalSinceNow ?? 0) / 60).rounded(.up)))
         let model = (loadConfig().model as NSString).lastPathComponent
         menu.addItem(withTitle: "\(model) loaded · unloads in \(minutes) min", action: nil, keyEquivalent: "").isEnabled = false
         menu.addItem(withTitle: "Unload Model Now", action: #selector(unloadModel(_:)), keyEquivalent: "").target = self
+        menu.addItem(modelSubmenu())
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: "").target = self
     }
 
     @objc private func unloadModel(_ sender: Any?) {
         warm?.unload()
+    }
+
+    // The models on this Mac, rebuilt each time it opens (see menuNeedsUpdate).
+    private func modelSubmenu() -> NSMenuItem {
+        let item = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: "Model")
+        modelMenus.add(menu)
+        menu.delegate = self
+        item.submenu = menu
+        return item
+    }
+
+    // A different model was chosen: free the old one's memory now. Two models don't fit in 8 GB, and
+    // the next rewrite loads the new one.
+    private func modelChanged() {
+        warm?.unload()
+        settingsWindow?.reload()
     }
 
     // MARK: Windows
@@ -170,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings(_:)), keyEquivalent: ",").target = self
         appMenu.addItem(withTitle: "Unload Model", action: #selector(unloadModel(_:)), keyEquivalent: "").target = self
+        appMenu.addItem(modelSubmenu())
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Prompt Menu", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let editMenu = NSMenu(title: "Edit")

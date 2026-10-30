@@ -69,9 +69,12 @@ func testLlamaCppInvocation() throws {
         "-m", "/models/qwen.gguf",
         "-sys", agentSystemPrompt,
         "-p", "fix the bug",
-        "-cnv", "-st", "--no-display-prompt", "--log-disable",
+        "-cnv", "-st", "--no-display-prompt",
         "-n", "300", "--temp", "0.5",
     ])
+    // --log-disable also silences the reply in llama.cpp build 10470 (exit 0, empty stdout), so every
+    // rewrite failed with "didn't return any text". Its logs go to stderr, which is read only on failure.
+    check(!inv.arguments.contains("--log-disable"), "--log-disable hides the model's reply")
 }
 
 func testFindExecutable() throws {
@@ -146,4 +149,10 @@ func testSettings() throws {
     // The built-in prompt isn't saved, so improving it reaches everyone who didn't change it.
     saveConfig(BackendConfig(backend: .mlx, model: "m"), to: defaults)
     checkEqual(defaults.string(forKey: "systemPrompt"), "")
+    // Extra folders to look for GGUF models in: none unless added; blanks and repeats dropped, ~ expanded.
+    checkEqual(modelFolders(from: defaults), [])
+    saveModelFolders(["~/models", " ", "/x", "/x"], to: defaults)
+    checkEqual(modelFolders(from: defaults), [NSHomeDirectory() + "/models", "/x"])
+    defaults.set("not a list", forKey: "modelFolders")
+    checkEqual(modelFolders(from: defaults), [])
 }

@@ -1,6 +1,6 @@
 # Future features
 
-Designed, not built. Each section says what it's for, how it would work inside Prompt Menu's rules (local only, no network code, no permissions, Command Line Tools only), what it would cost on an 8 GB Mac, and what's still open. Build them in the order listed; each one uses the pieces before it.
+**Status:** §1, §2, §3 and §5 are built (see the CHANGELOG). §4 and §6 are still designs. Each section says what it's for, how it would work inside Prompt Menu's rules (local only, no network code, no permissions, Command Line Tools only), what it would cost on an 8 GB Mac, and what's still open. Build them in the order listed; each one uses the pieces before it.
 
 The rule for all of them: **highlight → right-click → first draft stays exactly as fast and simple as it is.** Everything here is an optional button in the dialog after the first draft.
 
@@ -80,7 +80,7 @@ Each pass writes at most five critique bullets, then edits. An edit is **kept on
 
 **Cost:** with two 3B models, about 6–8 model calls plus model switches, roughly 1.5–2.5 minutes. Show the estimate before starting.
 
-**Open questions:** should a 3B model be allowed on the jury at all? Its pattern picks in testing were weak. One option is to require a 7B+ judge, or count small-model votes at half weight.
+**Decided:** judges under 3.5 GB on disk (about 7B at 4 bits) count at half weight. In testing, Qwen 2.5 3B and LFM2.5 1.2B both answered "B" in both orders, so the bias check made them abstain and the checker decided. Hardening also strips instruction lines a model echoes and text above the first heading, and rejects an edit that repeats a section (Qwen 2.5 3B looped the whole prompt seven times once).
 
 ## 4. Send to a coding agent's CLI
 
