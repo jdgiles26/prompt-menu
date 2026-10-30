@@ -2,7 +2,7 @@ import Foundation
 
 // What the highlighted text is rewritten into. Each style is one item in the Services menu.
 enum Style: String, CaseIterable {
-    case agentPrompt, bugReport, codeReview, commitMessage
+    case agentPrompt, bugReport, codeReview, commitMessage, explain
 
     var dialogTitle: String {
         switch self {
@@ -10,13 +10,21 @@ enum Style: String, CaseIterable {
         case .bugReport: return "Bug Report"
         case .codeReview: return "Code Review Request"
         case .commitMessage: return "Commit Message"
+        case .explain: return "Explain This for Me"
         }
     }
 
     // In Info.plist's NSServices: the item's title and the method macOS calls. Users bind keyboard
     // shortcuts to these, so don't rename them.
-    var menuTitle: String { "Rewrite as \(dialogTitle)" }
-    var serviceMessage: String { "rewriteAs" + dialogTitle.replacingOccurrences(of: " ", with: "") }
+    var menuTitle: String { isRewrite ? "Rewrite as \(dialogTitle)" : dialogTitle }
+    var serviceMessage: String { isRewrite ? "rewriteAs" + dialogTitle.replacingOccurrences(of: " ", with: "") : "explainThisForMe" }
+
+    // Explain answers questions about the text instead of rewriting it, so the rewrite tools
+    // (patterns, Fill Gaps, project context) don't apply.
+    var isRewrite: Bool { self != .explain }
+
+    // An explanation is meant to go in depth, so it gets room for a longer answer than the setting.
+    func maxTokens(base: Int) -> Int { isRewrite ? base : max(base, 2048) }
 
     // The headings the instructions ask for, in order. The checker looks for them.
     var sections: [String] {
@@ -25,6 +33,7 @@ enum Style: String, CaseIterable {
         case .bugReport: return ["TITLE", "SUMMARY", "STEPS TO REPRODUCE", "EXPECTED", "ACTUAL", "ENVIRONMENT"]
         case .codeReview: return ["CHANGE", "CONTEXT", "REVIEW FOCUS", "OUT OF SCOPE", "TESTING", "DONE WHEN"]
         case .commitMessage: return []
+        case .explain: return ["TL;DR", "WHAT IT IS", "HOW IT WORKS", "KEY PARTS", "WATCH OUT FOR", "NEXT STEPS"]
         }
     }
 
@@ -34,6 +43,7 @@ enum Style: String, CaseIterable {
         case .bugReport: return bugReportPrompt
         case .codeReview: return codeReviewPrompt
         case .commitMessage: return commitMessagePrompt
+        case .explain: return explainPrompt
         }
     }
 }
@@ -99,4 +109,26 @@ Format:
 - Where the reason for the change is missing, write [CONFIRM: why] instead of guessing.
 
 \(rules)
+"""
+
+// Written for a reader who wants the point first and the detail in small, scannable pieces.
+private let explainPrompt = """
+You explain text, code, logs or files to a busy reader who loses focus with long paragraphs. Explain it in depth, but in small pieces that are easy to scan.
+
+Write six sections, in this order, each starting with its heading on its own line: TL;DR:, WHAT IT IS:, HOW IT WORKS:, KEY PARTS:, WATCH OUT FOR:, NEXT STEPS:
+
+What goes in each (don't copy these descriptions into your answer):
+- TL;DR is one sentence: what this is and why it matters.
+- WHAT IT IS is the big picture in two or three short sentences, with one plain-language analogy.
+- HOW IT WORKS is a numbered walk-through from start to finish. For code, go top to bottom: what each function, type or block does, what goes in, what comes out, and what it changes.
+- KEY PARTS lists the important names, terms, settings and values, one per line as "- **name**: what it does and why it matters".
+- WATCH OUT FOR lists gotchas, edge cases, errors and risks, each with why.
+- NEXT STEPS gives two to four concrete things to do or check next.
+
+Rules:
+- Keep each bullet or step to one to three short sentences. Use lists, not long paragraphs.
+- Put **bold** on each key term the first time it appears, and define jargon right where it's used.
+- Quote names, values and error messages exactly as they appear in the text.
+- Explain only what the text shows. Never invent behavior. Where you have to guess, add "(probably)" and say what would confirm it.
+- Reply with only the explanation: no preamble, no closing remarks.
 """

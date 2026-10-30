@@ -74,7 +74,7 @@ final class SettingsWindowController: NSWindowController, NSMenuDelegate {
         keepLoadedField.widthAnchor.constraint(equalToConstant: 44).isActive = true
 
         let note = NSTextField(wrappingLabelWithString:
-            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt (or Bug Report, Code Review Request, Commit Message, or Replace Selection) from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere. To change the agent prompt's instructions: defaults write local.promptmenu systemPrompt \"…\"")
+            "Highlight text in any app, then choose Services → Rewrite as Agent Prompt (or Bug Report, Code Review Request, Commit Message, or Replace Selection), or Explain This for Me, from its right-click or app menu. The model runs on this Mac; nothing is sent anywhere. To change the agent prompt's instructions: defaults write local.promptmenu systemPrompt \"…\"")
         let tryIt = NSButton(title: "Try It", target: self, action: #selector(tryIt(_:)))
         let save = NSButton(title: "Save", target: self, action: #selector(save(_:)))
         save.keyEquivalent = "\r"

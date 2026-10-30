@@ -52,3 +52,37 @@ func testCleanOutput() throws {
     checkEqual(cleanOutput("Here is the rewri"), "Here is the rewri")
     checkEqual(cleanOutput("  \n"), "")
 }
+
+// Files right-clicked in Finder: each one's name, then its text, all within maxInputCharacters.
+func testExplainFileInput() throws {
+    let dir = try makeTempFolder()
+    let swift = (dir as NSString).appendingPathComponent("Login.swift")
+    try "func login() {}".write(toFile: swift, atomically: true, encoding: .utf8)
+    checkEqual(try explainInput(files: [swift]), "File: Login.swift\n\nfunc login() {}")
+
+    let notes = (dir as NSString).appendingPathComponent("notes.txt")
+    try "two".write(toFile: notes, atomically: true, encoding: .utf8)
+    checkEqual(try explainInput(files: [swift, notes]), "File: Login.swift\n\nfunc login() {}\n\nFile: notes.txt\n\ntwo")
+
+    let big = (dir as NSString).appendingPathComponent("big.txt")
+    try String(repeating: "x", count: maxInputCharacters * 2).write(toFile: big, atomically: true, encoding: .utf8)
+    checkEqual(try explainInput(files: [big]).count, maxInputCharacters)
+
+    // Bytes are trimmed only where the read stopped mid-character, not to excuse a bad last byte.
+    let tail = (dir as NSString).appendingPathComponent("tail.txt")
+    try (Data(String(repeating: "a", count: maxInputCharacters + 1000).utf8) + [0xFF]).write(to: URL(fileURLWithPath: tail))
+    checkThrows(.unreadableFile("tail.txt")) { _ = try explainInput(files: [tail]) }
+    let cut = (dir as NSString).appendingPathComponent("cut.txt")
+    try String(repeating: "é", count: maxInputCharacters * 3).write(toFile: cut, atomically: true, encoding: .utf8)
+    checkEqual(try explainInput(files: [cut]).count, maxInputCharacters)
+    // Once the text is full, later files aren't read at all.
+    checkEqual(try explainInput(files: [big, (dir as NSString).appendingPathComponent("gone.txt")]).count, maxInputCharacters)
+
+    // Not text: a binary file, a folder, a file that isn't there.
+    let binary = (dir as NSString).appendingPathComponent("image.png")
+    try Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF, 0xFE, 0x00]).write(to: URL(fileURLWithPath: binary))
+    checkThrows(.unreadableFile("image.png")) { _ = try explainInput(files: [binary]) }
+    checkThrows(.unreadableFile((dir as NSString).lastPathComponent)) { _ = try explainInput(files: [dir]) }
+    checkThrows(.unreadableFile("gone.txt")) { _ = try explainInput(files: [(dir as NSString).appendingPathComponent("gone.txt")]) }
+    checkThrows(.emptyInput) { _ = try explainInput(files: []) }
+}

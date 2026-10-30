@@ -98,6 +98,30 @@
 			<key>NSMenuItem</key>
 			<dict>
 				<key>default</key>
+				<string>Explain This for Me</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>explainThisForMe</string>
+			<key>NSPortName</key>
+			<string>Prompt Menu</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.plain-text</string>
+				<string>public.source-code</string>
+				<string>public.json</string>
+				<string>public.xml</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
 				<string>Rewrite as Agent Prompt (Replace Selection)</string>
 			</dict>
 			<key>NSMessage</key>

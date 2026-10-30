@@ -60,3 +60,14 @@ func testCheckerRepeatedHeadings() throws {
     let result = checkPrompt(looped, source: "", style: .agentPrompt)
     check(result.doneWhenCheckable, "DONE WHEN is read up to the next heading")
 }
+
+// An explanation is scored on its sections only: it needn't repeat every name and number.
+func testCheckerExplain() throws {
+    let source = "func login(user: String) { retries = 3 }"
+    let good = Style.explain.sections.map { "\($0): something" }.joined(separator: "\n")
+    let check = checkPrompt(good, source: source, style: .explain)
+    checkEqual(check.lostFacts, [])
+    checkEqual(check.missingSections, [])
+    checkEqual(check.score, 100)
+    checkEqual(checkPrompt("TL;DR: logs in", source: source, style: .explain).missingSections, Array(Style.explain.sections.dropFirst()))
+}

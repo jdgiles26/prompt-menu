@@ -34,6 +34,7 @@ enum RewriteError: Error, Equatable {
     case timedOut
     case emptyOutput
     case modelError(String)  // The kept-loaded model replied with an error, such as a model that isn't downloaded.
+    case unreadableFile(String)  // A file from Finder that isn't text, or can't be read.
 }
 
 extension RewriteError: LocalizedError {
@@ -50,6 +51,7 @@ extension RewriteError: LocalizedError {
         case .timedOut: return "The model took too long and was stopped. Try a smaller model or shorter text."
         case .emptyOutput: return "The model didn't return any text."
         case .modelError(let message): return "The model couldn't answer.\n\n\(message)"
+        case .unreadableFile(let name): return "Couldn't read \(name) as text. Explain This for Me works on text and code files."
         }
     }
 }
@@ -59,6 +61,29 @@ func prepareInput(_ text: String) throws -> String {
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { throw RewriteError.emptyInput }
     return String(trimmed.prefix(maxInputCharacters))
+}
+
+// Files chosen in Finder for Explain This for Me: each one's name, then its text, cut to
+// maxInputCharacters. Only the files the user picked are read, and nothing is written.
+func explainInput(files: [String]) throws -> String {
+    guard !files.isEmpty else { throw RewriteError.emptyInput }
+    // Enough for the cut below, without reading a huge file whole: a character is at most 4 bytes.
+    let readLimit = maxInputCharacters * 4
+    var text = ""
+    for path in files where text.count < maxInputCharacters {
+        let name = (path as NSString).lastPathComponent
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), !isFolder.boolValue,
+              let handle = FileHandle(forReadingAtPath: path) else { throw RewriteError.unreadableFile(name) }
+        defer { try? handle.close() }
+        let data = handle.readData(ofLength: readLimit)
+        var contents = String(data: data, encoding: .utf8)
+        // The read may stop inside a character; only then drop its first bytes.
+        for drop in 1...3 where contents == nil && data.count == readLimit { contents = String(data: data.dropLast(drop), encoding: .utf8) }
+        guard let contents, !contents.contains("\u{0}") else { throw RewriteError.unreadableFile(name) }
+        text += (text.isEmpty ? "" : "\n\n") + "File: \(name)\n\n\(contents.trimmingCharacters(in: .whitespacesAndNewlines))"
+    }
+    return String(text.prefix(maxInputCharacters))
 }
 
 // For runners that take a single prompt and no separate system prompt.

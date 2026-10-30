@@ -41,7 +41,10 @@ func testServicesEntry() throws {
 
 func testStyles() throws {
     for style in Style.allCases {
-        check(style.builtInPrompt.contains("[CONFIRM:"), "\(style) should ask for [CONFIRM: …] instead of guesses")
+        // Explain doesn't rewrite, so there's nothing to ask [CONFIRM: …] about; it says what it's unsure of instead.
+        if style.isRewrite {
+            check(style.builtInPrompt.contains("[CONFIRM:"), "\(style) should ask for [CONFIRM: …] instead of guesses")
+        }
         for section in style.sections {
             check(style.builtInPrompt.contains("\(section):"), "\(style)'s instructions don't name its \(section) section")
         }
@@ -51,4 +54,34 @@ func testStyles() throws {
     let custom = BackendConfig(backend: .mlx, model: "m", systemPrompt: "Be brief.")
     checkEqual(systemPrompt(for: .agentPrompt, config: custom), "Be brief.")
     checkEqual(systemPrompt(for: .bugReport, config: custom), Style.bugReport.builtInPrompt)
+}
+
+// Explain This for Me: its own title (not "Rewrite as …"), takes Finder files too, and the
+// existing items keep the titles and method names users bound shortcuts to.
+func testExplainStyle() throws {
+    checkEqual(Style.explain.menuTitle, "Explain This for Me")
+    checkEqual(Style.explain.serviceMessage, "explainThisForMe")
+    check(!Style.explain.isRewrite, "explain isn't a rewrite")
+    check(Style.allCases.filter { $0 != .explain }.allSatisfy { $0.isRewrite }, "the other styles are rewrites")
+    checkEqual(Style.bugReport.menuTitle, "Rewrite as Bug Report")
+    checkEqual(Style.codeReview.serviceMessage, "rewriteAsCodeReviewRequest")
+    checkEqual(Style.commitMessage.menuTitle, "Rewrite as Commit Message")
+    let prompt = Style.explain.builtInPrompt
+    checkEqual(Style.explain.sections.first, "TL;DR")
+    check(prompt.lowercased().contains("explain"), "the instructions should ask for an explanation")
+    check(!prompt.contains("[CONFIRM:"), "an explanation has no [CONFIRM: …] questions")
+    check(prompt.contains("(probably)"), "guesses should be marked, not stated as fact")
+    // In depth: room for a longer answer than a rewrite, without changing the setting.
+    checkEqual(Style.explain.maxTokens(base: 1024), 2048)
+    checkEqual(Style.explain.maxTokens(base: 4096), 4096)
+    checkEqual(Style.agentPrompt.maxTokens(base: 1024), 1024)
+
+    guard let plist = NSDictionary(contentsOfFile: "Resources/App-Info.plist"),
+          let services = plist["NSServices"] as? [[String: Any]],
+          let service = services.first(where: { $0["NSMessage"] as? String == "explainThisForMe" }) else {
+        throw TestFailure(description: "no Services item for explainThisForMe")
+    }
+    let fileTypes = service["NSSendFileTypes"] as? [String] ?? []
+    check(fileTypes.contains("public.plain-text") && fileTypes.contains("public.source-code"),
+          "Explain This for Me should show on text and code files in Finder")
 }

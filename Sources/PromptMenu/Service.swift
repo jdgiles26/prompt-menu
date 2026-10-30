@@ -29,6 +29,17 @@ final class ServiceProvider: NSObject {
         open(pasteboard, as: .commitMessage, error: error)
     }
 
+    // Highlighted text, or text and code files right-clicked in Finder.
+    @objc func explainThisForMe(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        guard !files.isEmpty else { open(pasteboard, as: .explain, error: error); return }
+        do {
+            onText(try explainInput(files: files.map(\.path)), .explain)
+        } catch let failure {
+            error.pointee = failure.localizedDescription as NSString
+        }
+    }
+
     // Replaces the highlighted text. On failure the text stays as it was and macOS shows the error.
     @objc func rewriteAsAgentPromptInPlace(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         guard let text = text(on: pasteboard, error: error) else { return }

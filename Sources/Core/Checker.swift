@@ -37,7 +37,8 @@ func checkPrompt(_ prompt: String, source: String, style: Style) -> PromptCheck 
     var result = PromptCheck()
     result.missingSections = style.sections.filter { headingRange($0, in: prompt) == nil }
     result.confirmCount = prompt.components(separatedBy: "[CONFIRM:").count - 1
-    result.lostFacts = facts(in: source).filter { !contains(prompt, fact: $0) }
+    // An explanation needn't repeat every name and number; only a rewrite must keep them.
+    if style.isRewrite { result.lostFacts = facts(in: source).filter { !contains(prompt, fact: $0) } }
     if let doneWhen = sectionText("DONE WHEN", in: prompt, style: style) {
         result.doneWhenCheckable = isCheckable(doneWhen)
     }
