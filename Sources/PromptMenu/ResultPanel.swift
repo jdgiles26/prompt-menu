@@ -62,6 +62,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private let questionField = NSTextField()
     private let askButton = NSButton(title: "Ask", target: nil, action: nil)
     private var chatTurns: [ChatTurn] = []
+    private var showingFailure = false  // The text view shows an error, not a result.
     private var resultAboveButtons: NSLayoutConstraint!
     private var resultAboveChat: NSLayoutConstraint!
     var onClose: (() -> Void)?
@@ -236,6 +237,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         var config = loadConfig()
         if let chosenModel { config = config.choosing(chosenModel) }
         config.maxTokens = style.maxTokens(base: config.maxTokens)
+        config.inputLabel = style.inputLabel
         let input: String
         switch operation {
         case .draft:
@@ -292,7 +294,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                 switch result {
                 case .success(let text) where chosenModel != nil:
                     let score = checkPrompt(text, source: self.source, style: self.style).score
-                    self.versions.append(Version(text: text, label: "\(self.versions.count + 1) · \(chosenModel!.name) · \(seconds)s · check \(score)",
+                    self.versions.append(Version(text: text, label: "\(self.versions.count + 1) · \(chosenModel!.name) · \(seconds)s\(self.style.isRewrite ? " · check \(score)" : "")",
                                                  author: chosenModel!.id))
                     self.showVersion(self.versions.count - 1)
                     self.setRunning(false, status: "")
@@ -327,6 +329,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
 
     private func setRunning(_ running: Bool, status text: String, failed: Bool = false) {
         isRunning = running
+        if !running { showingFailure = failed }
         if !running { timer?.invalidate(); timer = nil }
         running ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
         spinner.isHidden = !running
@@ -376,6 +379,8 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         let compare = ActionMenuItem(title: "Compare Models…") { [weak self] in self?.compareModels() }
         compare.isEnabled = !isRunning && !modelsOnThisMac().isEmpty
         menu.addItem(compare)
+        // Review judges and hardens agent prompts; an explanation isn't one.
+        guard style.isRewrite else { return }
         let review = ActionMenuItem(title: "Review…") { [weak self] in self?.reviewModels() }
         review.toolTip = "The models judge the versions blind, then harden the winner. Every step is in the Review Log."
         review.isEnabled = compare.isEnabled && versions.contains { !$0.failed }
@@ -684,7 +689,20 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         startClock()
         showTranscript(adding: "You: \(question)\nAssistant: …")
         let warm = warmRunner(config)
-        let shown = textView.string, history = chatTurns  // The result as it is now, edits included.
+        // The result as it is now, edits included; after a failure the text view shows the error,
+        // so ask about the selected version, or the last one that worked. The failure stays shown.
+        let failedShown = showingFailure
+        let index = versionPopup.indexOfSelectedItem
+        let selected = versions.indices.contains(index) ? versions[index] : nil
+        let shown: String
+        if !failedShown && selected?.failed != true {
+            shown = textView.string
+        } else if let selected, !selected.failed {
+            shown = selected.text
+        } else {
+            shown = versions.last { !$0.failed }?.text ?? ""
+        }
+        let history = chatTurns
         // It may run the model twice; stopping must also keep the second run from starting.
         let stopper = Stopper()
         stopRunning = { stopper.stop() }
@@ -707,11 +725,11 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                     self.chatTurns.append(ChatTurn(question: question, answer: answer))
                     self.questionField.stringValue = ""
                     self.showTranscript()
-                    self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.")
+                    self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.", failed: failedShown)
                 case .failure(let error):
                     // The question stays in the field, to ask again.
                     self.showTranscript(adding: "You: \(question)\n\(error.localizedDescription)")
-                    self.setRunning(false, status: "Couldn't answer. Ask again, or pick another model.")
+                    self.setRunning(false, status: "Couldn't answer. Ask again, or pick another model.", failed: failedShown)
                 }
                 self.window?.makeFirstResponder(self.questionField)
             }

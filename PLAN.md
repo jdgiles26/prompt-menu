@@ -19,6 +19,7 @@ Source: the request for a right-click "Explain this for me" item in an ADHD-frie
 - [x] Round 2: `Chat.swift` (`ChatTurn`, `chatSystemPrompt`, `chatContext`, `maxChatCharacters`, `isNonAnswer`, `answerFollowUp`). Checked with Qwen 2.5 3B through `llama-completion`: explain check 100 in 21–25 s; 5 of 5 follow-ups answered in 6–12 s, including off-topic ones via the fallback
 - [x] Round 3: chat area and `askQuestion` in ResultPanel (one model run per dialog kept), Explain hides the rewrite tools, docs
 - [x] Review (torvalds-doctrine) and fixes, each with a failing test first: fixed context shares so a long text can't wipe the conversation; a `Stopper` so Close stops the fallback run too; `isNonAnswer` no longer flags "The result: 3"; `explainInput` trims bytes only where the read stopped and stops reading once full; an earlier answer repeated for a new question counts as no answer. Real-model check: an 8,000-character file explained in 22 s (check 100), three follow-ups in 7–8 s each, "Canberra" answered, and a fact from two turns back recalled
+- [x] /code-review findings fixed, failing test first where Core: non-answers counted precisely (right answers like "The code doesn't include any error handling", an edited result and a repeated "No." are kept; curly-apostrophe refusals are caught); the chat prompt says not to redo the result; llamafile labels follow-ups "Question" and explanations "Text to explain" (rewrites unchanged); `explainInput` reads with the throwing `read(upToCount:)`; after a failed run the chat uses the last working version and Copy stays off; Review… and the check score are hidden for explanations. Real model: an on-topic "No, …" kept 3 of 3, pancakes answered 3 of 3, an edit request applied, Canberra answered
 - [ ] Manual checks 13 and 14 in DEVELOPMENT.md: the UI isn't clicked through yet (the real-model runs above went through the Core pipeline, not the dialog)
 - [x] Committed as phase2-round1 to round3
 
@@ -32,7 +33,8 @@ Source: the request for a right-click "Explain this for me" item in an ADHD-frie
 ## Found Along the Way
 
 - FLOW_MAPS' table of contents was missing flow 16 (Review); added with 17 and 18.
-- With llamafile, `combinedPrompt` labels the user's part "Text to rewrite:", so a follow-up question goes in under that label too. Not changed (it's shared with every style); worth a neutral label later.
+- Asked to change one line in a rewrite dialog, Qwen 2.5 3B returns only the changed section, not the whole result the chat prompt asks for. It's an answer, so it's kept; the user copies the section by hand.
+- The transcript is rebuilt whole on every streamed chunk, and the "You:/Assistant:" format is written in Chat.swift and ResultPanel.swift. Unmeasured; only matters for long chats.
 - A Metal out-of-memory failure during a run (seen once, transient, at 74% free memory afterwards) shows as "The model runner stopped with exit code 1" plus the log tail. A plainer message for out-of-memory would help on 8 GB Macs.
 - In Explain dialogs the spinner keeps its place after the hidden Add Project button, so it sits a little to the right. Cosmetic.
 - Qwen 2.5 3B sometimes answers a follow-up wrongly rather than not at all (asked to repeat a number from an earlier answer that had none, it said "1"). The guard catches non-answers, not wrong answers.

@@ -35,6 +35,11 @@ func testCustomSystemPrompt() throws {
         check(!args.contains(where: { $0.contains(agentSystemPrompt) }), "\(backend) still sends the default system prompt")
     }
     checkEqual(combinedPrompt("fix it", systemPrompt: "Be brief."), "Be brief.\n\nText to rewrite:\nfix it")
+    // Explain and the chat label their part for what it is; rewrites keep "Text to rewrite".
+    checkEqual(BackendConfig(backend: .llamafile, model: "").inputLabel, "Text to rewrite")
+    checkEqual(combinedPrompt("what is x?", systemPrompt: "Be brief.", label: "Question"), "Be brief.\n\nQuestion:\nwhat is x?")
+    checkEqual(Style.explain.inputLabel, "Text to explain")
+    check(Style.allCases.filter(\.isRewrite).allSatisfy { $0.inputLabel == "Text to rewrite" }, "rewrites keep their label")
 }
 
 func testLlamafileInvocation() throws {

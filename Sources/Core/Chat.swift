@@ -22,7 +22,7 @@ private let turnsRoom = 3000
 private func chatFormat(_ style: Style) -> String {
     style.isRewrite
         ? "Be clear and concise. When the user asks for a change to the result, reply with the changed text in full."
-        : "Answer in the same easy-to-scan way as the explanation: the point first, short bullets or numbered steps, **bold** on key terms, jargon defined where it's used."
+        : "Keep answers easy to scan: the point first, then short bullets or numbered steps if needed, **bold** on key terms, jargon defined where it's used."
 }
 
 func chatSystemPrompt(style: Style) -> String {
@@ -32,6 +32,7 @@ func chatSystemPrompt(style: Style) -> String {
 
     Rules:
     - Answer every question. Put the answer itself in the first sentence. Never refuse, skip or change the subject, and never say you can't answer.
+    - Answer only what was asked: don't repeat or redo the result unless the user asks for that.
     - Use the text and the result first, and quote names and values from them exactly.
     - If they don't cover the question, answer it anyway from your general knowledge, as any assistant would.
     - If you're unsure, give your best answer first, then one short line on what you're unsure of.
@@ -63,18 +64,24 @@ func chatContext(source: String, result: String, history: [ChatTurn]) -> String 
     return head + source.prefix(max(0, sourceRoom)) + "\n\n" + tail
 }
 
-// A reply that isn't an answer: a first sentence that refuses or points at the text, or the context
-// repeated back. Small models do both on questions the text doesn't cover. Quoting a line of the
-// text is fine; that's what an explanation does.
-func isNonAnswer(_ reply: String, context: String) -> Bool {
-    let first = reply.range(of: "^[^\\n]*?(?:[.!?](?=\\s)|\\n|$)", options: .regularExpression).map { String(reply[$0]) } ?? reply
-    let refusals = ["^(?:i'm|i am) sorry", "\\b(?:can't|cannot|unable to) answer",
-                    "\\b(?:text|result|context|code|file)\\b[^.\\n]{0,40}\\b(?:does not|doesn't|do not|don't|did not|didn't) (?:contain|mention|include|say|cover)"]
+// A reply that clearly isn't an answer: a first sentence that apologizes, says it can't answer or
+// that the text has no information on it, a heading of the context alone on its line (the context
+// echoed back), or the result returned unchanged. Small models do these on questions the text
+// doesn't cover. Only clear cases count: a false alarm throws away a right answer, such as "The
+// code doesn't include any error handling" or an edited result, for a guess without the text.
+func isNonAnswer(_ reply: String, result: String) -> Bool {
+    let text = reply.replacingOccurrences(of: "\u{2019}", with: "'")  // Typographic apostrophes.
+    let first = text.range(of: "^[^\\n]*?(?:[.!?](?=\\s)|\\n|$)", options: .regularExpression).map { String(text[$0]) } ?? text
+    let refusals = ["^(?:sorry|i'm sorry|i am sorry)\\b",
+                    "\\b(?:can't|cannot|unable to) answer\\b",
+                    "\\bi (?:can't|cannot|am unable to|'m unable to|am not able to) help\\b",
+                    "\\b(?:unsure|not sure) how to answer\\b",
+                    "\\b(?:do|does|did)(?: not|n't) (?:contain|mention|include|cover|provide|have|say) (?:any |enough )?(?:information|instructions|details)\\b",
+                    "\\b(?:do|does|did)(?: not|n't) (?:cover|address|answer) (?:the|this|that|your) question\\b"]
     if refusals.contains(where: { first.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }) { return true }
-    // A heading of the context alone on its line: "The result: 3" is an answer, "The result:\n…" an echo.
-    if reply.range(of: "(?m)^(?:The highlighted text|The result|Conversation so far):\\s*$", options: .regularExpression) != nil { return true }
-    let opening = String(reply.prefix(200))
-    return opening.count == 200 && context.contains(opening)
+    // "The result: 3" is an answer; "The result:" alone on its line starts an echo.
+    if text.range(of: "(?m)^(?:The highlighted text|The result|Conversation so far):\\s*$", options: .regularExpression) != nil { return true }
+    return text.trimmingCharacters(in: .whitespacesAndNewlines) == result.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 // One follow-up: asked with the dialog's context, and if that gets no answer, once more without it,
@@ -87,15 +94,18 @@ func answerFollowUp(_ question: String, style: Style, source: String, result: St
                     isStopped: () -> Bool = { false }) throws -> String {
     let context = chatContext(source: source, result: result, history: history)
     var withContext = config
+    withContext.inputLabel = "Question"
     withContext.systemPrompt = chatSystemPrompt(style: style) + "\n\n" + context
     let answer = try rewrite(question, config: withContext, warm: warm, searchDirs: searchDirs, timeout: timeout,
                              started: started, progress: progress, notice: notice)
     // Stopped meanwhile (a kept-loaded model returns what it wrote so far): don't start another run.
-    // A different question answered with an earlier answer word for word is no answer either.
-    let repeated = history.contains { $0.answer == answer && $0.question != question }
-    guard !isStopped(), repeated || isNonAnswer(answer, context: context) else { return answer }
+    // A different question answered with an earlier answer word for word is the model stuck on it.
+    // Short answers ("No.") can be right twice.
+    let repeated = answer.count >= 40 && history.contains { $0.answer == answer && $0.question != question }
+    guard !isStopped(), repeated || isNonAnswer(answer, result: result) else { return answer }
     notice?("The model didn't answer from the text, so it answered from general knowledge instead.")
     var alone = config
+    alone.inputLabel = "Question"
     alone.systemPrompt = """
     Answer the user's question directly from your general knowledge. Put the answer itself in the first sentence. Never refuse or say you can't answer. If you're unsure, give your best answer first, then one short line on what you're unsure of.
     \(chatFormat(style))

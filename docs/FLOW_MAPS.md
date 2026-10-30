@@ -444,7 +444,7 @@ sequenceDiagram
     P->>U: Explanation · versions · model menu · Ask a follow-up · Copy · Try Again · Close
 ```
 
-The pattern, Fill Gaps, Add Project and check controls are hidden, because `Style.explain.isRewrite` is false. The check still scores the sections (with no dropped-facts penalty) for Compare and Review.
+The pattern, Fill Gaps, Add Project and check controls, and Review… and Review Log in the model menu, are hidden, because `Style.explain.isRewrite` is false; Review judges and hardens agent prompts. Compare Models stays, and its versions carry no check score. With llamafile the text is labelled "Text to explain".
 
 ## 18. Follow-up chat
 
@@ -457,12 +457,13 @@ flowchart TD
     B -- no --> C["answerFollowUp · system prompt: chatSystemPrompt(style:) + chatContext<br/>(newest turns ≤ 3,000 · start of the result ≤ 3,000 · highlighted text in the rest, ≤ 8,000 · total ≤ maxChatCharacters)<br/>prompt: the question alone"]
     C --> D["rewrite(question, …) · same generation and stop function as run(_:)"]
     D --> E[answer streams into the transcript]
-    E --> X{stopped? if not: isNonAnswer<br/>(refusal in the first sentence, context echoed)<br/>or an earlier answer repeated for a new question?}
+    E --> X{stopped? if not: isNonAnswer<br/>(apology, "can't answer" or "no information" in the first sentence,<br/>a context heading alone on its line, the result unchanged)<br/>or an earlier answer of 40+ characters repeated for a new question?}
     X -- yes --> Y["rewrite(question, …) again without the context · status says so"]
     Y --> F
     X -- no --> F{result}
     F -- answer --> G[ChatTurn added · field cleared]
     F -- error --> H[error shown in the transcript · question kept in the field]
+    F -.- K[after a failed run, the selected or last working version is the result,<br/>and Copy stays off]
     D -. Close or Try Again .-> I([Stopper: the run stops, no second run starts, the partial answer is dropped])
 ```
 

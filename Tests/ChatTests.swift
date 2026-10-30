@@ -13,6 +13,8 @@ func testChatSystemPrompt() throws {
         check(prompt.contains("never say you can't answer"), "\(style): no non-answers")
         // With Qwen 2.5 3B, a "(general knowledge)" tag rule got the tag back instead of an answer.
         check(!prompt.contains("(general knowledge)"), "\(style): no tag for the model to reply with alone")
+        // Seen with Qwen 2.5 3B: an off-topic question answered by writing the explanation again.
+        check(prompt.contains("don't repeat or redo the result"), "\(style): answer the question, not the original task")
     }
     check(chatSystemPrompt(style: .explain).contains("**bold**"), "explain's follow-ups keep its easy-to-scan format")
 }
@@ -68,27 +70,35 @@ func testChatRoundTrip() throws {
                "it's \"quoted\"; $(rm -rf /) stays text")
 }
 
-// Seen with Qwen 2.5 3B on off-topic questions: a refusal, or the context repeated back.
+// Only clear non-answers are asked again, without the text: a false alarm throws away a right
+// answer for a guess, which is worse than letting a vague reply stand. Each case was seen with
+// Qwen 2.5 3B, or is a right answer an earlier version threw away.
 func testChatNonAnswer() throws {
-    let long = (1...6).map { "// Line \($0) of a long comment about keeping the chat within its limit." }.joined(separator: "\n")
-    let context = chatContext(source: "// Keeps the chat within the limit, oldest turns first.\nlet x = 1\n\(long)", result: "TL;DR: a limit", history: [])
+    let result = "TITLE: Login fails\nENVIRONMENT: macOS 14"
     for reply in ["I'm sorry, but the text provided does not contain instructions on how to make pancakes.",
-                  "The text doesn't mention the capital of Australia.",
+                  "I’m sorry, but the text doesn’t mention that.",
+                  "Sorry, I can't help with that from the text.",
                   "The highlighted text and the result do not cover the question of how to make pancakes.",
+                  "The text doesn’t contain any information about Australia.",
                   "I can't answer that from the text.",
+                  "Therefore, I am unsure how to answer this question based solely on the text.",
                   "The result:\nTL;DR: a limit",
-                  long + "\nmore"] {
-        check(isNonAnswer(reply, context: context), "should count as no answer: \(reply)")
+                  result] {
+        check(isNonAnswer(reply, result: result), "should count as no answer: \(reply)")
     }
-    // Quoting a line of the text is what an explanation does; a refusal-like phrase after the first
-    // sentence is part of the answer. (A quoted line was taken for an echo with Qwen 2.5 3B.)
-    for reply in ["The capital of Australia is Canberra.", "12000", "Mix flour, eggs and milk, then fry.",
+    for reply in ["The capital of Australia is Canberra.", "12000", "No.", "Mix flour, eggs and milk, then fry.",
                   "`let x = 1` sets x to 1.", "It drops the oldest turns first.",
-                  "Keeps the chat within the limit, oldest turns first.\nThat's the comment's point.",
+                  "The code doesn't include any error handling, so a nil input will crash.",
+                  "The code doesn’t set a timeout.",
                   "It checks the reply. If the text doesn't contain an answer, it asks again.",
-                  "The result: retries is 3, so it tries three times."] {
-        check(!isNonAnswer(reply, context: context), "is an answer: \(reply)")
+                  "The result: retries is 3, so it tries three times.",
+                  // An edit request in a rewrite dialog: the result in full with one line changed.
+                  "TITLE: Login fails\nENVIRONMENT: macOS 15"] {
+        check(!isNonAnswer(reply, result: result), "is an answer: \(reply)")
     }
+    // The same edit on a result long enough that its whole start is copied.
+    let long = "SUMMARY: " + String(repeating: "Login fails after the session expires. ", count: 10) + "\nENVIRONMENT: macOS 14"
+    check(!isNonAnswer(long.replacingOccurrences(of: "macOS 14", with: "macOS 15"), result: long), "an edited result is an answer")
 }
 
 // A non-answer is asked once more without the text, so the question still gets an answer.
@@ -130,12 +140,38 @@ func testChatRepeatedAnswer() throws {
     let dir = try makeTempFolder()
     try makeScript("mlx_lm.generate", in: dir, #"""
     while [ $# -gt 0 ]; do [ "$1" = "--system-prompt" ] && s="$2"; shift; done
-    case "$s" in *"The highlighted text:"*) echo "Copy copies the text." ;; *) echo "Canberra." ;; esac
+    case "$s" in *"The highlighted text:"*) echo "The Copy button copies the current prompt to the clipboard." ;; *) echo "Canberra." ;; esac
     """#)
     let config = BackendConfig(backend: .mlx, model: "m")
-    let history = [ChatTurn(question: "What does Copy do?", answer: "Copy copies the text.")]
+    let history = [ChatTurn(question: "What does Copy do?", answer: "The Copy button copies the current prompt to the clipboard."),
+                   ChatTurn(question: "Is it thread-safe?", answer: "No.")]
     checkEqual(try answerFollowUp("Capital of Australia?", style: .explain, source: "s", result: "r", history: history,
                                   config: config, searchDirs: [dir], timeout: 10), "Canberra.")
     checkEqual(try answerFollowUp("What does Copy do?", style: .explain, source: "s", result: "r", history: history,
-                                  config: config, searchDirs: [dir], timeout: 10), "Copy copies the text.")
+                                  config: config, searchDirs: [dir], timeout: 10), "The Copy button copies the current prompt to the clipboard.")
+}
+
+// A short answer can be right for two questions ("No." twice); only a longer one repeated word for
+// word is the model stuck on its last answer.
+func testChatShortRepeatIsAnAnswer() throws {
+    let dir = try makeTempFolder()
+    try makeScript("mlx_lm.generate", in: dir, #"""
+    while [ $# -gt 0 ]; do [ "$1" = "--system-prompt" ] && s="$2"; shift; done
+    case "$s" in *"The highlighted text:"*) echo "No." ;; *) echo "guessed" ;; esac
+    """#)
+    let history = [ChatTurn(question: "Is it thread-safe?", answer: "No.")]
+    checkEqual(try answerFollowUp("Does it handle nil?", style: .explain, source: "s", result: "r", history: history,
+                                  config: BackendConfig(backend: .mlx, model: "m"), searchDirs: [dir], timeout: 10), "No.")
+}
+
+// llamafile gets one combined prompt; a follow-up is labelled as a question, not as text to rewrite.
+func testChatLlamafileLabel() throws {
+    let dir = try makeTempFolder()
+    try makeScript("llamafile", in: dir, #"""
+    while [ $# -gt 0 ]; do [ "$1" = "-p" ] && p="$2"; shift; done
+    printf '%s\n' "$p" | tail -2 | head -1
+    """#)
+    let answer = try answerFollowUp("what is x?", style: .explain, source: "s", result: "r", history: [],
+                                    config: BackendConfig(backend: .llamafile, model: ""), searchDirs: [dir], timeout: 10)
+    checkEqual(answer, "Question:")
 }

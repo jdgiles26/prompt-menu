@@ -23,6 +23,9 @@ enum Style: String, CaseIterable {
     // (patterns, Fill Gaps, project context) don't apply.
     var isRewrite: Bool { self != .explain }
 
+    // How the input is labelled for runners that get one combined prompt (BackendConfig.inputLabel).
+    var inputLabel: String { isRewrite ? "Text to rewrite" : "Text to explain" }
+
     // An explanation is meant to go in depth, so it gets room for a longer answer than the setting.
     func maxTokens(base: Int) -> Int { isRewrite ? base : max(base, 2048) }
 

@@ -20,6 +20,6 @@
 
 ## 2026-10-30: What counts as no answer
 
-- **Chosen:** `isNonAnswer` looks only at the first sentence for refusals ("I'm sorry", "can't answer", "the text doesn't contain/mention/cover…"), treats a context heading alone on its line or a 200-character verbatim copy as an echo, and `answerFollowUp` also counts an earlier answer repeated word for word for a different question.
-- **Alternatives:** any line copied from the context (the first version), any heading at a line start.
-- **Why:** each was seen with Qwen 2.5 3B. The first version flagged a correct answer that quoted one line of the code, and "The result: 3" is an answer. Quoting the text is what an explanation does, so only long copies count.
+- **Chosen:** precision over recall. `isNonAnswer` counts only clear cases: an apology, "can't answer", "unsure how to answer", "has no information/instructions/details", or "doesn't cover the question" in the first sentence (typographic apostrophes normalized); a context heading alone on its line; or the result returned unchanged. `answerFollowUp` also counts an earlier answer of 40+ characters repeated word for word for a different question. The chat prompt says to answer only what was asked and not to repeat or redo the result unless asked.
+- **Alternatives:** any "the text/code doesn't contain/include/mention…" sentence, a 200-character copy of the context, any repeated answer (the earlier versions); a looser detector for the model redoing the explanation.
+- **Why:** a false alarm throws away a right answer and asks again without the text, which gives a guess. The earlier rules did that to "The code doesn't include any error handling…", to an edited result in a rewrite dialog (it starts like the result), and to "No." given twice. Vague replies are rarer and visible. Redoing the explanation on an off-topic question was fixed in the prompt instead: with Qwen 2.5 3B, 3 of 3 "How do I make pancakes?" runs then got a recipe.

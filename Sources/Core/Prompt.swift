@@ -76,7 +76,9 @@ func explainInput(files: [String]) throws -> String {
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), !isFolder.boolValue,
               let handle = FileHandle(forReadingAtPath: path) else { throw RewriteError.unreadableFile(name) }
         defer { try? handle.close() }
-        let data = handle.readData(ofLength: readLimit)
+        // read(upToCount:) throws on an I/O error (a drive pulled mid-read); readData raises an
+        // Objective-C exception that Swift can't catch.
+        guard let data = try? handle.read(upToCount: readLimit) ?? Data() else { throw RewriteError.unreadableFile(name) }
         var contents = String(data: data, encoding: .utf8)
         // The read may stop inside a character; only then drop its first bytes.
         for drop in 1...3 where contents == nil && data.count == readLimit { contents = String(data: data.dropLast(drop), encoding: .utf8) }
@@ -87,8 +89,8 @@ func explainInput(files: [String]) throws -> String {
 }
 
 // For runners that take a single prompt and no separate system prompt.
-func combinedPrompt(_ input: String, systemPrompt: String = agentSystemPrompt) -> String {
-    "\(systemPrompt)\n\nText to rewrite:\n\(input)"
+func combinedPrompt(_ input: String, systemPrompt: String = agentSystemPrompt, label: String = "Text to rewrite") -> String {
+    "\(systemPrompt)\n\n\(label):\n\(input)"
 }
 
 // The model's reply without the runner's noise around it. Also called on partial output while it

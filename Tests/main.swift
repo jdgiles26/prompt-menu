@@ -84,6 +84,8 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("chat: fallback", testChatFallback),
     ("chat: no fallback once stopped", testChatFallbackStopped),
     ("chat: repeated answer", testChatRepeatedAnswer),
+    ("chat: short repeat is an answer", testChatShortRepeatIsAnAnswer),
+    ("chat: llamafile label", testChatLlamafileLabel),
     ("checker: good prompt", testCheckerScoresAGoodPrompt),
     ("checker: problems", testCheckerFindsProblems),
     ("checker: commit message", testCheckerCommitMessage),

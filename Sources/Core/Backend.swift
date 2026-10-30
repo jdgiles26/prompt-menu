@@ -37,6 +37,8 @@ struct BackendConfig: Equatable {
     var temperature = 0.3
     // What the model is told to do; agentSystemPrompt unless the user changed it.
     var systemPrompt = agentSystemPrompt
+    // What the input is, for runners that get one combined prompt (llamafile).
+    var inputLabel = "Text to rewrite"
 }
 
 // One run of a model runner.
@@ -77,7 +79,7 @@ func invocation(for config: BackendConfig, input: String, searchDirs: [String]) 
         // refuses, so let the shell start them, as running one from Terminal does.
         var args = [exe]
         if !model.isEmpty { args += ["-m", model] }
-        args += ["--cli", "-p", combinedPrompt(input, systemPrompt: config.systemPrompt), "-n", tokens, "--temp", temp]
+        args += ["--cli", "-p", combinedPrompt(input, systemPrompt: config.systemPrompt, label: config.inputLabel), "-n", tokens, "--temp", temp]
         return Invocation(executable: "/bin/sh", arguments: args, environment: [:])
     case .llamaCpp:
         return Invocation(executable: exe, arguments: [
