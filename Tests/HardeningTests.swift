@@ -258,3 +258,73 @@ func testTwoStagePatternPick() throws {
     check(choosesFromAllPatterns(LocalModel(format: .mlx, id: "org/big", bytes: 4_500_000_000)), "7B")
     check(!choosesFromAllPatterns(LocalModel(format: .mlx, id: "org/3b", bytes: 2_000_000_000)), "3B")
 }
+
+// Seen in the app (2026-11-05): "add a delete command … add a test" put Session-Scoped Context Runtime
+// first and Spec-As-Test fourth. Building something is a kind of task too.
+func testShortlistForFeatureWork() throws {
+    let patterns = try loadPatterns(from: "Resources/patterns.json")
+    // The draft as the dialog had it, standard lines included.
+    let draft = hardenAgentPrompt("""
+    ROLE: AI coding assistant
+    OBJECTIVE: Add a delete command to `notes.py` in `tiny notes` to remove a note by its number, without changing the `notes.json` format, and add a test.
+    CONTEXT: `notes.py`, `notes.json`
+    STEPS:
+    1. Open `notes.py`.
+    2. Confirm: What is the current structure of `notes.json`?
+    3. Add a function to delete a note by its number.
+    4. Test the delete function with sample data.
+    5. Save `notes.py`.
+    CONSTRAINTS:
+    - Do not change the `notes.json` format.
+    - Do not add any new dependencies.
+    DONE WHEN:
+    - The delete function removes the note and the test passes.
+    """, source: "add a delete command to notes.py in tiny notes so i can remove a note by its number. dont change the notes.json format. add a test")
+    let withTest = shortlist(for: draft, in: patterns)
+    checkEqual(withTest.prefix(2).map(\.slug), ["spec-as-test-feedback-loop", "plan-then-execute-pattern"])
+    let noTest = shortlist(for: "OBJECTIVE: Implement an export button on the reports page.", in: patterns)
+    checkEqual(noTest.first?.slug, "plan-then-execute-pattern")
+    // A bug fix still wins: "add" appears in most fixes too.
+    checkEqual(shortlist(for: "OBJECTIVE: Fix the crash on export and add a regression test.", in: patterns).first?.slug, "spec-as-test-feedback-loop")
+}
+
+// Asked for one line per phase, Qwen 2.5 3B filled every phase, but put code in IMPLEMENT and a bare
+// function name in SPEC (2 of 3 runs). A prompt says what to do; the agent writes the code.
+func testPhaseDetailsAreNotCode() throws {
+    guard let p = try loadPatterns(from: "Resources/patterns.json").first(where: { $0.slug == "spec-as-test-feedback-loop" }) else {
+        throw TestFailure(description: "no spec-as-test")
+    }
+    let reply = """
+    SPEC: delete_note_by_number()
+    RED: Run the new test for deleting note 2 and check that it fails because there is no delete command yet.
+    IMPLEMENT: def delete_note_by_number(self, note_number): notes = json.load(open("notes.json")) if note_number in notes: del notes[note_number]
+    GREEN: Run the new test and the whole suite, and read the output.
+    """
+    let steps = sectionBody("STEPS", of: applyWorkflow(p, reply: reply, prompt: "OBJECTIVE: x\\nSTEPS:\\n1. x", source: "add a delete command to notes.py, delete note 2").text)
+    check(!steps.contains("def "), steps)
+    check(!steps.contains("delete_note_by_number"), steps)
+    check(steps.contains("there is no delete command yet"), steps)
+    // The instructions ask for one line per phase, not the whole prompt, and say no code.
+    let system = phaseDetailsSystemPrompt(p)
+    for phase in workflowBlueprint(for: p).phases { check(system.contains("\(phase.name):"), phase.name) }
+    check(system.contains("No code"), system)
+    check(!system.contains("ROLE:"), "only the phases are asked for")
+}
+
+// Seen in the app (2026-11-05, settings-store.json): Qwen 2.5 3B ran a section's bullets together on one
+// line, which defeats the easy-to-scan layout Explain is for. They go back on lines of their own.
+func testExplanationBulletsOnTheirOwnLines() throws {
+    let reply = """
+    TL;DR: settings-store.json stores settings for Docker - the desktop app.
+    KEY PARTS: – **AutoStart**: false – **AutoStartError**: "option disabled" – **SettingsVersion**: 48
+    WATCH OUT FOR: – The value of "LastContainerdSnapshotterEnable" is a timestamp. – The "SettingsVersion" is a number.
+    NEXT STEPS:
+    - Check the Docker settings.
+    """
+    let fixed = finishedPrompt(reply, style: .explain, source: "x", builtInInstructions: true).text
+    check(fixed.contains("KEY PARTS:\n- **AutoStart**: false\n- **AutoStartError**: \"option disabled\"\n- **SettingsVersion**: 48"), fixed)
+    check(fixed.contains("WATCH OUT FOR:\n- The value of \"LastContainerdSnapshotterEnable\" is a timestamp.\n- The \"SettingsVersion\" is a number."), fixed)
+    // One dash in a sentence isn't a list.
+    check(fixed.contains("TL;DR: settings-store.json stores settings for Docker - the desktop app."), fixed)
+    check(fixed.contains("NEXT STEPS:\n- Check the Docker settings."), fixed)
+}

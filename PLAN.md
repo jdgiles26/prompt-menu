@@ -20,7 +20,7 @@ Source: the request for a right-click "Explain this for me" item in an ADHD-frie
 - [x] Round 3: chat area and `askQuestion` in ResultPanel (one model run per dialog kept), Explain hides the rewrite tools, docs
 - [x] Review (torvalds-doctrine) and fixes, each with a failing test first: fixed context shares so a long text can't wipe the conversation; a `Stopper` so Close stops the fallback run too; `isNonAnswer` no longer flags "The result: 3"; `explainInput` trims bytes only where the read stopped and stops reading once full; an earlier answer repeated for a new question counts as no answer. Real-model check: an 8,000-character file explained in 22 s (check 100), three follow-ups in 7–8 s each, "Canberra" answered, and a fact from two turns back recalled
 - [x] /code-review findings fixed, failing test first where Core: non-answers counted precisely (right answers like "The code doesn't include any error handling", an edited result and a repeated "No." are kept; curly-apostrophe refusals are caught); the chat prompt says not to redo the result; llamafile labels follow-ups "Question" and explanations "Text to explain" (rewrites unchanged); `explainInput` reads with the throwing `read(upToCount:)`; after a failed run the chat uses the last working version and Copy stays off; Review… and the check score are hidden for explanations. Real model: an on-topic "No, …" kept 3 of 3, pancakes answered 3 of 3, an edit request applied, Canberra answered
-- [ ] Manual checks 13 and 14 in DEVELOPMENT.md: the UI isn't clicked through yet (the real-model runs above went through the Core pipeline, not the dialog)
+- [x] Manual checks 13 and 14 in DEVELOPMENT.md: the chat and Explain dialogs were clicked through in Phase 6, round 4
 - [x] Committed as phase2-round1 to round3
 
 ## Phase 3: Finder Explain fix and real agentic workflows
@@ -34,7 +34,7 @@ Evidence (2026-11-05): three right-clicks on `~/Library/Group Containers/group.c
 - [x] Round 3: `Workflow.swift`: code-owned phases and gates for all 203 patterns, the model fills in task details; drafts get a work loop and every section; no fact dropped; the check scores workflow gaps; task-type shortlist
 - [x] Round 4: Docs, real-model before and after, install, cold-launch check
 - [x] Committed, at the user's request
-- [ ] Finder right-click on a blocked file, start to finish, confirmed by the user. Choose File's grant was seen in the logs from one click during testing; the whole flow hasn't been watched
+- [x] A blocked file, start to finish: watched in Phase 6, round 4 (failure window, Choose…, the picker, the explanation; the grant held for the next request). Sent through Services rather than a right-click
 
 ## Phase 4: Explain anything from Finder
 
@@ -42,7 +42,7 @@ Source: the request that Explain This for Me run on "folders, non file extension
 
 - [x] Round 1: tests first (`ItemDescriptionTests`, reversed assertions marked with why), `ItemDescription.swift`, shared limit in `explainInput`, plist types, Choose… takes folders, prompt rule
 - [x] Round 2: real checks. Finder menu shows the item on a folder, `.db`, no-extension text, no-extension SQLite and a binary; a real click on `shop.db` reached the model with its schema. Qwen 2.5 3B explained a folder (21 s), a database (11 s) and `/bin/ls` (25 s). `~` and `/` were described in about 1.2 s
-- [ ] The result dialog for these items seen on screen: computer use couldn't be granted Prompt Menu, so the input reaching the model was checked instead of the dialog
+- [x] The result dialog for these items seen on screen: done in Phase 6, round 4 (a folder, an image and a blocked JSON file)
 - [x] Round 3: README, ARCHITECTURE and FLOW_MAPS rewritten around what the app does, how, its benefits, assets and privacy, with flows 19 to 23
 - [x] Committed and pushed to main, at the user's request
 
@@ -59,7 +59,7 @@ Source: "fix all the known issues, bugs and ensure the built in prompts for each
 - [x] Round 1: every built-in prompt run on Qwen 2.5 3B (draft, each style, pattern, suggestion, chat); repairs in code with tests from those replies (stated and invented limits, bullets, invented names and numbers, RED vs gate, commit message shape, echoed instructions, SCOPE); prompt changes for Commit Message, Code Review, Explain and the chat; chat edits become a version; image text via Vision; Finder reading off the main thread with a limit; out-of-memory message; Explain spinner position; chat transcript cached
 - [x] Round 2: FEATURE_FUTURE §4 Send To: `Harness.swift` (defaults checked against each CLI's docs, `harnesses.json`, detection, Terminal script, Copy Command, recent folders), the Send To… menu. A generated script opened in Terminal through `NSWorkspace` and deleted itself (checked with `/usr/bin/true` as the CLI)
 - [x] Round 3: FEATURE_FUTURE §6: whole-catalog pick for ~7B models (`pickPattern`, tested with a stand-in; no 7B model here), CI catalog-age warning. Not built, with reasons in DECISIONS: keeping llama.cpp loaded (measured: under 1 s to gain), mlx-swift (needs Xcode, rule 4)
-- [ ] Round 4: manual checks in the app, docs, push
+- [x] Round 4: checked in the installed app through the real Services path (`NSPerformService`, because Finder's menus closed when Terminal took focus): Explain on an image, a folder and a blocked file with Choose…; the chat; a chat edit becoming a version; a pattern; Send To's menu, recent folders and Copy Command (dry-run with a stand-in `claude`); Commit Message. Fixed what that showed, test first: Vision's 30–43 s first use (now `.fast`), a long status widening every tabbed dialog off screen, a feature task getting a poor shortlist, the pattern reply filling 0 of 4 phases, and bullets run together in Explain. Not done: starting a real agent CLI (it would send the prompt to that CLI's servers), and the context menu itself, which closed before it could be clicked
 
 ## Open Questions
 

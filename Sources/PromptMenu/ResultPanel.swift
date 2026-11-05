@@ -75,7 +75,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         self.source = source
         self.style = style
         self.warmRunner = warmRunner
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 660, height: 660),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 740, height: 660),
                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         panel.title = style.dialogTitle
         panel.minSize = NSSize(width: 520, height: 460)
@@ -109,6 +109,10 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         spinner.style = .spinning
         spinner.controlSize = .small
         status.lineBreakMode = .byTruncatingTail
+        // Truncate rather than widen the window: tabbed dialogs share one width, and a long status pushed them off screen.
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        versionPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)  // Long version names too.
+        modelPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         status.textColor = .secondaryLabelColor
         versionPopup.target = self
         versionPopup.action = #selector(versionChosen(_:))
@@ -256,7 +260,8 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             config.systemPrompt = systemPrompt(for: style, config: config)
             input = source
         case .pattern(let pattern, let text):
-            config.systemPrompt = patternSystemPrompt(pattern, sections: style.sections)
+            // An agent prompt's workflow is built by code; the model only adds each phase's details.
+            config.systemPrompt = style == .agentPrompt ? phaseDetailsSystemPrompt(pattern) : patternSystemPrompt(pattern, sections: style.sections)
             input = style == .agentPrompt ? removingStandardLines(text) : text
         case .polish(let text):
             config.systemPrompt = polishSystemPrompt(sections: style.sections)
@@ -767,7 +772,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                         self.versions.append(Version(text: edited, label: "\(self.versions.count + 1) · From the chat"))
                         self.showVersion(self.versions.count - 1)
                         self.updateCheck()
-                        self.setRunning(false, status: "Answered in \(seconds)s. The change is version \(self.versions.count); earlier versions are in the menu.")
+                        self.setRunning(false, status: "Answered in \(seconds)s. The change is version \(self.versions.count).")
                     } else {
                         self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.", failed: failedShown)
                     }

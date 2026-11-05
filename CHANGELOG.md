@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Agentic patterns fill their phases with your task.** For an agent prompt the model is asked for one line per phase, not the whole prompt, so it can't just copy the old list; code it writes and bare names are dropped. Building something ("add", "implement"…) now offers Spec-As-Test (when tests are asked for) or Plan-Then-Execute first.
+- Explanations put each bullet on its own line when the model runs them together.
+- Image text is read with Vision's fast mode: the accurate one spent about 40 s getting ready the first time.
+- The dialog is a little wider, and a long status or version name no longer widens it (tabbed dialogs share one width).
 - With a kept-loaded model of about 7B or more, the ★ pattern suggestion chooses from all 203 patterns, in two steps.
 - CI warns when the pattern catalog is more than 180 days old.
 - **Send To…** in rewrite dialogs starts Claude Code, Codex, Gemini CLI or Aider (whichever are installed) in Terminal, in a folder you pick, with the prompt. Or **Copy Command** for any terminal. Add other CLIs in `harnesses.json`. The prompt goes by the clipboard and is never written to disk.

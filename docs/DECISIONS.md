@@ -77,7 +77,7 @@
 
 - **Chosen:** Vision's text recognition (`VNRecognizeTextRequest`), which runs on the device, plus the image's size in pixels.
 - **Alternatives:** type and size only (before); a vision model.
-- **Why:** the text model can't see pictures, and a screenshot's text (an error, a scanned page) is what most people want explained. Vision needs no permission or entitlement and no network.
+- **Why:** the text model can't see pictures, and a screenshot's text (an error, a scanned page) is what most people want explained. Vision needs no permission or entitlement and no network. The `.fast` level, not `.accurate`: in the installed app the first image sat at "Reading…" for about 30 s, and a fresh program measured 42.46 s for `.accurate`'s first use (0.08 s after), against 0.10 s for `.fast`, which read the same screenshot identically. Both read `userId` as `userld`.
 
 ## 2026-11-05: Send To hands the prompt over by the clipboard, not a file
 
@@ -95,4 +95,15 @@
 
 - **Chosen:** with a kept-loaded model of 3.5 GB or more, the ★ suggestion asks in two steps (category, then one of its ten best keyword matches) over all 203 patterns, and the pick is added to the top of the list if it isn't among the five. Smaller models choose among the five shown.
 - **Why:** each step stays a choice among ten or fewer, which a small context handles. 3B models picked worse than the keyword order, so they don't get the bigger choice. Not run with a real 7B model here; tested with a stand-in.
+
+## 2026-11-05: A pattern on an agent prompt asks the model for the phases only
+
+- **Chosen:** `phaseDetailsSystemPrompt` asks for one line per phase (with each gate, a sample line from an unrelated task, and "no code"), and nothing else. Code drops details that are code or a bare name. The shortlist has task types for building something ("add", "implement", "build"…), with Spec-As-Test first when tests are asked for.
+- **Alternatives:** asking for the whole prompt with the phases in it (before).
+- **Why:** checked by hand in the app on "add a delete command to notes.py … add a test": the whole-prompt request got details for 0 of 4 phases in 3 of 3 runs (the model copied the old list); asking for the phases alone filled all 4, but with code in 2 of 3; with the code filter and the sample line, 3–4 of 4 with the task's real names. The shortlist put Session-Scoped Context Runtime first and Spec-As-Test fourth for that task, because no task type covered building something.
+
+## 2026-11-05: Explanations get each bullet on its own line
+
+- **Chosen:** `finishedExplanation` splits a line holding two or more "– **name**" or "– Sentence" bullets into one bullet per line. One dash in a sentence is left alone.
+- **Why:** seen in the app: Qwen 2.5 3B ran KEY PARTS and WATCH OUT FOR together on one line for a JSON file, which defeats the easy-to-scan layout Explain is for.
 

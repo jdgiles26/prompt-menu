@@ -75,6 +75,7 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 19. **Add Project…**: pick this repository. A `With prompt-menu` version mentions `scripts/test.sh` in its context.
 20. **Compare Models…** and **Review…** (Model menu) are greyed out while a model runs; Review is greyed out with no successful version, and **Review Log** until a review has run. Review with two models: the status shows judging, then each role; kept edits appear as `Hardened: …` versions; Review Log lists votes, the winner and a diff per role. Close during a review: no runner keeps running (`pgrep -f "llama-completion|mlx_lm.generate"`).
 21. **Explain on anything**: in Finder, right-click a folder, a `.db`, a file with no extension and a binary. Explain This for Me is offered on each. The dialog explains each one; a database file's modification date doesn't change.
+22. **Images, chat edits, Send To**: Explain a screenshot with text in it; a "Reading …" window shows, then the explanation quotes its text. In an agent prompt dialog, ask the chat to add a constraint; a `From the chat` version appears with the whole prompt, and the window keeps its width. **Send To…** lists only installed CLIs, each with recent folders and **Choose Folder…**; **Copy Command** puts a `cd … && claude '…'` command on the clipboard.
 
 To trigger the service without clicking, from a small Swift script (for a Finder file, use `pb.writeObjects([URL(fileURLWithPath: path) as NSURL])` and `"Explain This for Me"`):
 

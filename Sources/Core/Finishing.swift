@@ -106,3 +106,28 @@ func finishedCommitMessage(_ text: String, source: String) -> String {
     return lines.joined(separator: "\n").replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
 }
+
+// MARK: Explanations
+
+private let explainHeading = try! NSRegularExpression(pattern: "^((?:TL;DR|WHAT IT IS|HOW IT WORKS|KEY PARTS|WATCH OUT FOR|NEXT STEPS):)\\s*(.*)$")
+private let inlineBullet = "(?:^|\\s)[–—-]\\s+(?=\\*\\*|[A-Z\"`])"
+
+// An explanation with each bullet on its own line. Small models sometimes run a section's bullets
+// together after its heading ("KEY PARTS: – **a**: x – **b**: y"), which defeats the easy-to-scan layout.
+// Two bullets or more on a line count; one dash in a sentence doesn't.
+func finishedExplanation(_ text: String) -> String {
+    text.components(separatedBy: "\n").map { line -> String in
+        let ns = line as NSString
+        var head = "", rest = line
+        if let match = explainHeading.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
+            head = ns.substring(with: match.range(at: 1))
+            rest = ns.substring(with: match.range(at: 2))
+        }
+        let restNS = rest as NSString
+        let bullets = try! NSRegularExpression(pattern: inlineBullet).matches(in: rest, range: NSRange(location: 0, length: restNS.length))
+        guard bullets.count >= 2, bullets[0].range.location == 0 else { return line }
+        let items = rest.replacingOccurrences(of: inlineBullet, with: "\n", options: .regularExpression)
+            .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return ([head].filter { !$0.isEmpty } + items.map { "- \($0)" }).joined(separator: "\n")
+    }.joined(separator: "\n")
+}

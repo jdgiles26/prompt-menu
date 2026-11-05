@@ -77,6 +77,9 @@ let taskTypeWorkflows: [(words: String, slugs: [String])] = [
     ("\\b(migrat\\w*|upgrad\\w*|port)\\b", ["swarm-migration-pattern", "plan-then-execute-pattern"]),
     ("\\b(review|critique|audit|revise)\\b", ["self-critique-evaluator-loop", "reflection"]),
     ("\\b(bugs?|fix|fixes|crash\\w*|errors?|exceptions?|regressions?|throws?|broken|failing)\\b", ["spec-as-test-feedback-loop", "output-verification-loop"]),
+    // Building something: with tests asked for, the tests lead; otherwise a plan does.
+    ("\\b(add|adding|implement\\w*|build|create|support)\\b[\\s\\S]*\\btests?\\b", ["spec-as-test-feedback-loop", "plan-then-execute-pattern"]),
+    ("\\b(add|adding|implement\\w*|build|create|support|feature)\\b", ["plan-then-execute-pattern", "spec-as-test-feedback-loop"]),
 ]
 
 // What the task asks, not the steps a draft planned, which mention errors and fixes for any task.
@@ -181,6 +184,7 @@ private extension String {
 
 // For a prompt with STEPS, only the phases' details are used from the reply (see applyWorkflow); the
 // rest of the outline shows the model what the phases are for.
+// For the styles other than the agent prompt, whose workflow phases come from phaseDetailsSystemPrompt.
 // `sections` are the headings the prompt must keep (the style's). Small models copy whatever
 // headings they see, so the exact output headings are spelled out and the pattern's own text is
 // marked as background, with its code and headings removed.
@@ -188,11 +192,6 @@ func patternSystemPrompt(_ p: AgenticPattern, sections: [String] = Style.agentPr
     let patternLine = "WORKFLOW PATTERN: \(p.title), because <why it fits this task, in one sentence>"
     var outline: [String] = sections.map { section in
         switch section {
-        case "STEPS":
-            let phases = workflowBlueprint(for: p).phases.enumerated().map { i, phase in
-                "\(i + 1). \(phase.name): <how to do this for this task, by its real names: \(phase.action)>"
-            }
-            return (["STEPS:"] + phases).joined(separator: "\n")
         case "CONSTRAINTS": return "CONSTRAINTS: the prompt's constraints, plus the ones the pattern needs"
         case "DONE WHEN": return "DONE WHEN: the prompt's finish criteria, plus the pattern's"
         default: return "\(section): as in the prompt"
@@ -218,7 +217,6 @@ func patternSystemPrompt(_ p: AgenticPattern, sections: [String] = Style.agentPr
     Rules:
     - Keep every fact, name, number and [CONFIRM: …] from the prompt. Never invent details; write [CONFIRM: what to ask] instead.
     - Write about the user's task only, not about the pattern in general.
-    - Under STEPS, write exactly the numbered phases above, with those names, instead of the prompt's old list.
     - Reply with only the rewritten prompt: no preamble, no explanation.
     """
 }

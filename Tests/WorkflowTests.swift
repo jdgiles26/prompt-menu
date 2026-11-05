@@ -188,7 +188,8 @@ func testFinishedPrompt() throws {
     checkEqual(applied.notice, "The model added details to 0 of 3 phases; the others use the pattern's own wording.")
     checkEqual(finishedPrompt("TITLE: x", style: .bugReport, source: note, builtInInstructions: true, pattern: p, before: "y").text, "TITLE: x")
     // The instructions the model gets name each phase, so it fills them in rather than copy the old list.
-    let system = patternSystemPrompt(p)
+    // (They moved from patternSystemPrompt to phaseDetailsSystemPrompt, which asks for the phases alone.)
+    let system = phaseDetailsSystemPrompt(p)
     for phase in workflowBlueprint(for: p).phases { check(system.contains("\(phase.name):"), "\(phase.name) isn't asked for") }
     check(!patternSystemPrompt(p, sections: Style.bugReport.sections).contains("Gate"), "other styles have no phases")
 }

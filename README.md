@@ -65,7 +65,7 @@ flowchart LR
 | **Compare Models, Review** | Run a draft on several models, then have them judge blind and harden the winner, with a Review Log |
 | **Send To** | Start Claude Code, Codex, Gemini CLI, Aider or any CLI you add, in Terminal, in a folder you pick, with the prompt |
 | **The item inspector** | Read-only summaries of folders, databases, documents, archives and binaries, built for a small model's limits |
-| **Source and docs** | MIT-licensed Swift, 108 test functions that need no model, diagrams of every flow, and rules for AI agents working in the repo |
+| **Source and docs** | MIT-licensed Swift, 112 test functions that need no model, diagrams of every flow, and rules for AI agents working in the repo |
 
 ## The Services items
 

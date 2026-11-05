@@ -111,7 +111,9 @@ private func imageDescription(_ path: String, info: stat) -> String? {
     lines.append("Size: \(image.width) × \(image.height) pixels, \(sizeText(Int64(info.st_size)))")
     lines.append("Modified: \(dateText(info.st_mtimespec.tv_sec))")
     let request = VNRecognizeTextRequest()
-    request.recognitionLevel = .accurate
+    // .accurate spent 42 s getting ready the first time a new program used it (measured twice);
+    // .fast took 0.1 s and read the same screenshot the same way.
+    request.recognitionLevel = .fast
     try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
     let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
     lines.append(text.isEmpty ? "No text was found in it." : "\nText in it, top to bottom:\n" + text.joined(separator: "\n"))

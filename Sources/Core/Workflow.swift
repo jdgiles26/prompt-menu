@@ -336,6 +336,8 @@ private func phaseDetails(_ phase: WorkflowPhase, pattern: AgenticPattern, all: 
         let new = words.filter { !job.contains($0) }
         // Fewer than two new words is an echo. Most of the job's words, plus new ones, is the job with this task's details in it.
         guard new.count >= 2, !plain.contains("<"), !reference.contains(plain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". "))) else { continue }
+        // Code, or a bare name like "delete_note_by_number()", isn't an instruction: the agent writes the code.
+        if plain.range(of: codePattern, options: .regularExpression) != nil || plain.split(separator: " ").count < 4 { continue }
         if expectsFailure, plain.range(of: "(?i)\\b(?:pass(?:es|ed)?|works?|working|succeed(?:s|ed)?|no longer|is fixed|resolved)\\b", options: .regularExpression) != nil { continue }
         if restated == nil, Double(Set(words).intersection(job).count) >= Double(job.count) * 0.6 {
             restated = plain
@@ -351,6 +353,8 @@ private func phaseDetails(_ phase: WorkflowPhase, pattern: AgenticPattern, all: 
     }
     return details
 }
+
+private let codePattern = "\\bdef \\w+\\(|\\bfunction \\w*\\(|=>|[{};]|\\bimport \\w|\\breturn \\w|==|\\w\\([^)]*\\)\\s*:|\\w+\\s*=\\s*\\w+\\("
 
 private func detailWords(_ text: String) -> [String] {
     text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
@@ -421,6 +425,7 @@ func finishedPrompt(_ output: String, style: Style, source: String, builtInInstr
                     pattern: AgenticPattern? = nil, before: String? = nil, instructions: String = "",
                     context: String = "") -> (text: String, notice: String?) {
     let output = instructions.isEmpty ? output : removingEchoedInstructions(output, instructions: instructions, input: source + "\n" + context)
+    if style == .explain { return (finishedExplanation(output), nil) }
     guard style.isRewrite, builtInInstructions || pattern != nil else { return (output, nil) }
     var text = output, notice: String?
     switch style {
@@ -440,4 +445,35 @@ func finishedPrompt(_ output: String, style: Style, source: String, builtInInstr
         break
     }
     return (questioningInventedNames(text, source: source + "\n" + context), notice)
+}
+
+// MARK: Asking for the phases' details
+
+// What the model is asked for when a pattern is applied to an agent prompt: one line per phase and
+// nothing else. Everything else comes from code (applyWorkflow), and asked for the whole prompt,
+// Qwen 2.5 3B copied the draft's old step list 3 times out of 3 and filled no phase.
+func phaseDetailsSystemPrompt(_ p: AgenticPattern) -> String {
+    let phases = workflowBlueprint(for: p).phases
+    let lines = phases.map { "\($0.name): <one or two sentences: what to do in this phase for this task>" }
+    let gates = phases.map { "- \($0.name) is done when: \($0.gate)" }
+    return """
+    You plan how an AI agent applies the workflow "\(p.title)" to the task below. \(p.summary).
+
+    The workflow's phases are fixed. For each one, write what the agent should do in that phase for this task, naming the task's real files, functions, commands and checks.
+
+    Reply with exactly these lines, in this order, and nothing else:
+    \(lines.joined(separator: "\n"))
+
+    Each phase must lead to its gate:
+    \(gates.joined(separator: "\n"))
+
+    The kind of line wanted, from an unrelated task (don't copy it):
+    SURVEY: Read config/db.yml and list each service that reads from the replica, without changing anything yet.
+
+    Rules:
+    - One or two full sentences per phase, saying what to do and what to look at, about this task only.
+    - No code: the agent writes the code. A command only if the task names it.
+    - Keep names and numbers from the task exactly. Never invent files, functions or commands; write [CONFIRM: what to ask] instead.
+    - No headings, lists or text other than those lines.
+    """
 }
