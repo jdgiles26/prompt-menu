@@ -9,6 +9,7 @@ struct PromptCheck: Equatable {
     var lostFacts: [String] = []
     var doneWhenCheckable = true
     var subjectLength = 0  // Commit messages only.
+    var workflowGaps: [String] = []  // Agent prompts only: what an agent needs to work on its own.
 
     // Each problem costs a fixed number of points, so the score is reproducible.
     var score: Int {
@@ -18,6 +19,7 @@ struct PromptCheck: Equatable {
         score -= min(20, 4 * confirmCount)
         if !doneWhenCheckable { score -= 10 }
         if subjectLength > 72 { score -= 15 }
+        for gap in workflowGaps { score -= gap == unappliedPatternGap ? 15 : 5 }
         return max(0, score)
     }
 
@@ -29,6 +31,7 @@ struct PromptCheck: Equatable {
         if confirmCount > 0 { list.append("\(confirmCount) [CONFIRM: …] question\(confirmCount == 1 ? "" : "s") to answer.") }
         if !doneWhenCheckable { list.append("DONE WHEN has nothing an agent can check, such as a test, a number or a visible result.") }
         if subjectLength > 72 { list.append("The subject line is \(subjectLength) characters; keep it to 72.") }
+        if !workflowGaps.isEmpty { list.append("The workflow lacks \(workflowGaps.joined(separator: ", ")).") }
         return list
     }
 }
@@ -45,7 +48,24 @@ func checkPrompt(_ prompt: String, source: String, style: Style) -> PromptCheck 
     if style == .commitMessage {
         result.subjectLength = prompt.components(separatedBy: "\n").first?.count ?? 0
     }
+    if style == .agentPrompt { result.workflowGaps = workflowGaps(in: prompt, style: style) }
     return result
+}
+
+let unappliedPatternGap = "the named pattern's phases with gates"
+
+// A numbered list isn't a workflow. An agent working alone also needs a check after its steps, a way
+// to recover from a failure, and a point to stop. Naming a pattern without phases applies nothing.
+private func workflowGaps(in prompt: String, style: Style) -> [String] {
+    let steps = sectionText("STEPS", in: prompt, style: style) ?? ""
+    let plan = steps + "\n" + (sectionText("CONSTRAINTS", in: prompt, style: style) ?? "")
+    func has(_ pattern: String, in text: String) -> Bool { text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }
+    var gaps: [String] = []
+    if !has("\\b(verify|check|checks|test|tests|run|confirm|assert|validate)\\b", in: steps) { gaps.append("a check of each step") }
+    if !has("\\b(if|when|on)\\b[^.\\n]{0,80}\\b(fail|fails|failed|failure|breaks?|errors?)\\b|\\bretry\\b|\\broll ?back\\b", in: plan) { gaps.append("a way to recover from a failure") }
+    if !has("\\b(stop and|escalate|ask (before|first|for)|hand (it )?back|report (back|what|why))\\b", in: plan) { gaps.append("a point to stop and report") }
+    if prompt.contains("WORKFLOW PATTERN:"), steps.components(separatedBy: "Gate:").count - 1 < 2 { gaps.append(unappliedPatternGap) }
+    return gaps
 }
 
 // "ROLE:", "**ROLE:**", "**Role**:", "## Role:" at the start of a line, searching from `from`.
@@ -96,7 +116,7 @@ func facts(in text: String) -> [String] {
 }
 
 // Case-insensitive, and a number must stand alone: "3" isn't kept by "2023".
-private func contains(_ text: String, fact: String) -> Bool {
+func contains(_ text: String, fact: String) -> Bool {
     let pattern = "(?<![\\w.])\(NSRegularExpression.escapedPattern(for: fact))(?![\\w])"
     return text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
 }

@@ -57,6 +57,12 @@ let inPlaceServiceMessage = "rewriteAsAgentPromptInPlace"
 // NSTimeout in Info.plist must be longer than this.
 let inPlaceTimeout: TimeInterval = 110
 
+// Settings is for opening the app directly. A launch for a Service never shows it, whatever became
+// of the request: a failure gets its own message, and Settings there looks like the service did nothing.
+func showsSettingsAtLaunch(isDefaultLaunch: Bool, handledService: Bool, hasWindows: Bool) -> Bool {
+    isDefaultLaunch && !handledService && !hasWindows
+}
+
 // The instructions for a style. The systemPrompt setting replaces only the agent prompt's.
 func systemPrompt(for style: Style, config: BackendConfig) -> String {
     style == .agentPrompt ? config.systemPrompt : style.builtInPrompt

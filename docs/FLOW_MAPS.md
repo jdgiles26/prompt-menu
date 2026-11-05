@@ -30,7 +30,7 @@ macOS starts the app when the Services item is chosen and it isn't already runni
 ```mermaid
 flowchart TD
     A([App starts]) --> B[applicationWillFinishLaunching<br/>main menu · servicesProvider = ServiceProvider]
-    B --> C[applicationDidFinishLaunching<br/>wait 0.5 s]
+    B --> C[applicationDidFinishLaunching<br/>wait 0.5 s · a launch for a Service<br/>never shows Settings, and quits after 30 s with no request]
     C --> D{Service request<br/>handled, or a panel open?}
     D -- yes --> E([Stay an accessory app:<br/>no Dock icon])
     D -- no --> F[showSettings<br/>activation policy → regular]
@@ -225,6 +225,7 @@ flowchart LR
         E[timedOut]
         F[emptyOutput]
         G["modelError(message)"]
+        U2["unreadableFile(name) · emptyFile(name)<br/>protectedFile(name)<br/>Explain on Finder files: FailurePanelController,<br/>protectedFile with Choose File…"]
     end
     A --> A1["There's no text to rewrite. Highlight some text first.<br/>(also returned to macOS by ServiceProvider)"]
     B --> B1["Couldn't find X. Install it, or set its full path in settings."]
@@ -371,16 +372,17 @@ The worker exits when its stdin closes, so it can't outlive the app even if the 
 ```mermaid
 flowchart TD
     A([Agentic Pattern… in a finished dialog]) --> B[edited text saved as a new version]
-    B --> C["shortlist(for: text)<br/>≥ 3 shared words, weighted by field and rarity<br/>+ general workflows to fill 5"]
+    B --> C["shortlist(for: text)<br/>workflows for the kind of task, then ≥ 3 shared words,<br/>weighted by field and rarity, + general workflows to fill 5"]
     C --> D[picker opens: 5 candidates · search over all 203]
     D --> E{model already loaded?}
     E -- yes --> F["patternChoicePrompt → one letter<br/>parseChoice → ★ suggested, selected"]
     E -- no --> G[keyword order stands]
     F --> H
     G --> H([user picks a pattern, or searches, then Apply])
-    H --> I["patternSystemPrompt(pattern, sections: style.sections)<br/>pattern as background · exact headings<br/>+ WORKFLOW PATTERN line"]
-    I --> J[rewrite the current text]
-    J --> K[new version: 'N · pattern title'<br/>check badge for the result]
+    H --> I["patternSystemPrompt(pattern, sections: style.sections)<br/>pattern as background · the blueprint's phases by name"]
+    I --> J[rewrite the current text, without the rules every prompt has]
+    J --> J2["finishedPrompt → applyWorkflow (agent prompts)<br/>code writes the phases and gates · only each phase's task details<br/>come from the reply · other sections stay the prompt's"]
+    J2 --> K[new version: 'N · pattern title'<br/>check badge · status says if some phases got no details]
     K --> L{good?}
     L -- no --> M[pick an earlier version, or Try Again]
     L -- yes --> N([Copy])
@@ -432,8 +434,13 @@ sequenceDiagram
     OS->>SP: explainThisForMe(pasteboard, userData, error)
     alt file URLs on the pasteboard
         SP->>SP: explainInput(files:) → "File: name" + text, cut to 8,000 characters
-        alt not text, a folder, or unreadable
-            SP-->>OS: error.pointee = "Couldn't read … as text…"
+        alt not text, empty, a folder, or blocked by macOS
+            SP->>AD: onFailure(error, files)
+            AD->>U: FailurePanelController says why (Finder doesn't show a service's error string)
+            opt blocked by macOS (EPERM or EACCES → protectedFile)
+                U->>AD: Choose File… → NSOpenPanel (picking the file is the consent macOS accepts)
+                AD->>AD: explainInput(chosen files) → the dialog, or protectedFileHelp
+            end
         end
     else text
         SP->>SP: text(on:error:) (empty → error)
@@ -443,6 +450,8 @@ sequenceDiagram
     P->>P: explainPrompt, maxTokens(base:) ≥ 2048, "Explaining with …"
     P->>U: Explanation · versions · model menu · Ask a follow-up · Copy · Try Again · Close
 ```
+
+A launch for a Service never opens Settings (`showsSettingsAtLaunch`, from `NSApplication.launchIsDefaultUserInfoKey`); with no request after 30 seconds, the app quits.
 
 The pattern, Fill Gaps, Add Project and check controls, and Review… and Review Log in the model menu, are hidden, because `Style.explain.isRewrite` is false; Review judges and hardens agent prompts. Compare Models stays, and its versions carry no check score. With llamafile the text is labelled "Text to explain".
 

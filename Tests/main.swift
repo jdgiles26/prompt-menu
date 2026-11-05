@@ -120,6 +120,21 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("review: one model and stop", testReviewPipelineSingleModelAndStop),
     ("review: estimate", testReviewEstimate),
     ("review: position bias", testReviewPositionBias),
+    ("explain: protected file", testExplainProtectedFile),
+    ("explain: empty file", testExplainEmptyFile),
+    ("explain: UTF-16 file", testExplainUTF16File),
+    ("launch: settings only when opened directly", testLaunchShowsSettingsOnlyWhenOpenedDirectly),
+    ("service failures reach the user", testServiceFailuresReachTheUser),
+    ("check: workflow gaps", testCheckerWorkflowGaps),
+    ("shortlist by task type", testPatternShortlistByTaskType),
+    ("workflow: every pattern has one", testEveryPatternHasAWorkflow),
+    ("workflow: model fills the phases", testWorkflowUsesTheModelsDetails),
+    ("workflow: details after an echo", testWorkflowKeepsDetailsAfterAnEcho),
+    ("workflow: restated phases", testWorkflowRestatedPhases),
+    ("workflow: survives a useless model", testWorkflowSurvivesAUselessModel),
+    ("workflow: applying twice", testWorkflowAppliedTwice),
+    ("workflow: draft hardening", testDraftHardening),
+    ("workflow: which outputs are hardened", testFinishedPrompt),
 ]
 
 for test in tests {

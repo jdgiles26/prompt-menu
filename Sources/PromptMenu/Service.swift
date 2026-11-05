@@ -6,11 +6,16 @@ import Cocoa
 final class ServiceProvider: NSObject {
     private let onText: (String, Style) -> Void
     private let replace: (String) -> Result<String, Error>
+    private let onFailure: (Error, [URL]) -> Void
 
     // `onText` opens a dialog. `replace` returns the rewritten text, blocking until it's ready.
-    init(onText: @escaping (String, Style) -> Void, replace: @escaping (String) -> Result<String, Error>) {
+    // `onFailure` shows what went wrong: Finder doesn't show a service's error string, so a failure
+    // that only sets it looks like nothing happened. It gets the files involved, if any.
+    init(onText: @escaping (String, Style) -> Void, replace: @escaping (String) -> Result<String, Error>,
+         onFailure: @escaping (Error, [URL]) -> Void) {
         self.onText = onText
         self.replace = replace
+        self.onFailure = onFailure
     }
 
     @objc func rewriteAsAgentPrompt(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
@@ -36,11 +41,11 @@ final class ServiceProvider: NSObject {
         do {
             onText(try explainInput(files: files.map(\.path)), .explain)
         } catch let failure {
-            error.pointee = failure.localizedDescription as NSString
+            onFailure(failure, files)
         }
     }
 
-    // Replaces the highlighted text. On failure the text stays as it was and macOS shows the error.
+    // Replaces the highlighted text. On failure the text stays as it was.
     @objc func rewriteAsAgentPromptInPlace(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         guard let text = text(on: pasteboard, error: error) else { return }
         switch replace(text) {
@@ -49,6 +54,7 @@ final class ServiceProvider: NSObject {
             pasteboard.setString(prompt, forType: .string)
         case .failure(let failure):
             error.pointee = failure.localizedDescription as NSString
+            onFailure(failure, [])
         }
     }
 
@@ -61,6 +67,7 @@ final class ServiceProvider: NSObject {
         guard let text = pasteboard.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             error.pointee = RewriteError.emptyInput.localizedDescription as NSString
+            onFailure(RewriteError.emptyInput, [])
             return nil
         }
         return text

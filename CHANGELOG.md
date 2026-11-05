@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Fixed: Explain This for Me on a file in a Finder folder could seem to do nothing, or open Settings.** macOS blocks reading some files without asking, such as those in another app's folder under `~/Library/Group Containers`. The failure went to an error string that Finder doesn't show, and then Settings opened. Now every failed request opens a window that says why, and a blocked file offers **Choose File…**, which lets macOS allow that file. A launch for a Service never opens Settings.
+- Explain This for Me is offered on more text files in Finder: anything macOS knows as text (HTML, YAML…), plus `.toml`, `.sql`, `.env`, `.ini`, `.conf` and `.cfg`, which the app now declares as text. PDFs, images and other binary files don't offer it. It also reads UTF-16 text, and says when a file is empty instead of having the model make something up.
+- **Agentic rewrites are real workflows.** Applying a pattern used to copy the draft's steps and add the pattern's name. Now the app builds the workflow itself: phases with a gate after each, for all 203 patterns, with the model adding only the task's details, so a poor reply still gives a working workflow. The status says when the model added details to only some phases.
+- **Rewrite as Agent Prompt** always gives all six sections and a work loop (check each step, up to 3 attempts, then stop and report). The original request is repeated and takes priority, so limits the model drops or invents can't change the task, and no name or number is lost. A custom `systemPrompt` keeps its own format. Replace Selection gets the same treatment.
+- **The check** also scores what an agent needs to work alone: a check of each step, a way to recover from a failure, and a point to stop (5 each), and a named pattern with no gated phases (15).
+- **Agentic Pattern…** offers workflows suited to the kind of task (a bug fix, a migration, research, a review) first.
+- `scripts/install.sh` quits the running copy, which would otherwise keep answering Services with its old code, and unregisters `build/`'s copy.
 - **Explain This for Me**, a sixth Services item: an in-depth explanation of the highlighted text or code, or of text and code files right-clicked in Finder (the first 8,000 characters), with the point first and the detail in short, easy-to-scan pieces. It has room for 2,048 tokens, or the setting if that's higher.
 - In Explain dialogs the rewrite tools (Agentic Pattern, Fill Gaps, Add Project, the check, Review) are hidden.
 - **Ask a follow-up** in every dialog: a small chat under the result that answers any question about the text and the result, with the conversation so far as context. It uses the same local model and is never saved.

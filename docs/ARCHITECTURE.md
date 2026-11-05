@@ -29,6 +29,7 @@ flowchart LR
         WARM[WarmRunner.swift<br/>WarmRunner · interpreter]
         CHECK[Checker.swift<br/>checkPrompt · PromptCheck]
         PAT[Patterns.swift<br/>shortlist · parseChoice<br/>patternSystemPrompt]
+        WF[Workflow.swift<br/>workflowBlueprint · applyWorkflow<br/>hardenAgentPrompt]
         SETS[Settings.swift<br/>loadConfig · saveConfig<br/>keepLoadedMinutes]
     end
     subgraph Runners["Local programs"]
@@ -65,6 +66,7 @@ flowchart LR
 | `Sources/Core/WarmRunner.swift` | `WarmRunner`: the MLX worker process, its JSON-lines protocol, one request at a time, cancel, timeout, and unloading after `idleTimeout`. `interpreter(ofScript:)` finds the Python that has mlx-lm. | Prompt |
 | `Sources/Core/Checker.swift` | `checkPrompt` and `PromptCheck`: missing sections, dropped facts, open `[CONFIRM: …]` questions, a checkable DONE WHEN, and a score with fixed point costs. No model. | Style |
 | `Sources/Core/Patterns.swift` | `AgenticPattern`, loading the catalog, `rankPatterns` and `shortlist` (keyword fit), `searchPatterns`, the model's typed choice (`patternChoicePrompt`, `parseChoice`), and `patternSystemPrompt`. | Style |
+| `Sources/Core/Workflow.swift` | What makes a rewrite a workflow: `workflowBlueprint(for:)` (phases and gates), `agentSections`, `hardenAgentPrompt`, `applyWorkflow`, `finishedPrompt`, `removingStandardLines`. |
 | `Sources/Core/Models.swift` | Finding models already on this Mac (`LocalModel`, `localModels`, `modelSearchFolders`), `missingModel` for a deleted model, `BackendConfig.choosing`, and the Compare estimate and memory fit. Reads the file system only. | Backend, Settings |
 | `Sources/Core/Fill.swift` | Fill Gaps: `confirmQuestions`, `fill` (exact replacement, no model) and the Polish instructions. | — |
 | `Sources/Core/Project.swift` | Add Project: `projectContext(folder:)` keeps the headings and commands of a chosen folder's AGENTS.md, CLAUDE.md and README; `withProjectContext`. | — |
@@ -72,6 +74,7 @@ flowchart LR
 | `Sources/Core/Chat.swift` | The follow-up chat: `ChatTurn`, `chatSystemPrompt(style:)` (answer every question), `chatContext`, which fits the context into `maxChatCharacters` with fixed shares (the newest turns up to 3,000 characters, oldest dropped first; the start of the result up to 3,000; the highlighted text in the rest, up to `maxInputCharacters`), so a long text never pushes the conversation out; `isNonAnswer` (only clear cases: an apology or "can't answer" or "has no information" in the first sentence, a context heading alone on its line, or the result returned unchanged); and `answerFollowUp`, which asks once with the context and, on a non-answer or an earlier answer of 40+ characters repeated for a new question, once without it, unless stopped in between. Follow-ups are labelled "Question" for llamafile. | Style |
 | `Sources/Core/Settings.swift` | Reading and writing preferences (`loadConfig`, `saveConfig`, `keepLoadedMinutes`), the default model, and the allowed ranges. | Backend |
 | `Sources/PromptMenu/Service.swift` | `ServiceProvider`, the object macOS calls for the six Services items. Explain This for Me also takes file URLs from Finder. | Core |
+| `Sources/PromptMenu/FailurePanel.swift` | The window that says why a Services request failed, with **Choose File…** for a file macOS blocked. Not a modal alert, which would hold up other requests and quitting. |
 | `Sources/PromptMenu/ResultPanel.swift` | One dialog per request: spinner and timer, streamed text, versions, the check badge, the model menu (with Compare Models, Review and Review Log), Fill Gaps, Add Project, the Agentic Pattern button, the follow-up chat (`askQuestion`), Copy, Try Again and Close, and stopping the model when closed. | Core |
 | `Sources/PromptMenu/ModelMenu.swift` | The model menu items (`modelMenuItems`, `ActionMenuItem`) and `modelsOnThisMac`. | Core |
 | `Sources/PromptMenu/ModelsSheet.swift` | The sheet for ticking models, with an estimate, used by Compare Models and Review. | Core |
@@ -207,12 +210,14 @@ With MLX and a keep-loaded time above 0 (default 5 minutes), `rewrite` sends the
 
 The **Agentic Pattern…** button restructures the current text around one workflow from Awesome Agentic Patterns.
 
-1. **Shortlist, without a model.** `rankPatterns` scores each pattern by the words it shares with the prompt, weighted by field (title and tags 3, signals 2, summary 1.5), rarer words counting more (IDF), minus words in its "Avoid when". `shortlist` keeps up to three patterns that share at least three words, and fills the rest from `generalPatternSlugs` (plan-then-execute, spec-as-test, self-critique, output verification, phase separation). Fewer than three shared words is usually a coincidence.
+1. **Shortlist, without a model.** Workflows for the kind of task come first (`taskTypeWorkflows`, judged on OBJECTIVE and CONTEXT, since any draft's steps mention errors and fixes). Then `rankPatterns` scores each pattern by the words it shares with the prompt, weighted by field (title and tags 3, signals 2, summary 1.5), rarer words counting more (IDF), minus words in its "Avoid when". `shortlist` keeps up to three patterns that share at least three words, and fills the rest from `generalPatternSlugs` (plan-then-execute, spec-as-test, self-critique, output verification, phase separation). Fewer than three shared words is usually a coincidence.
 2. **The model's pick, only when it's already loaded.** `patternChoicePrompt` lists the options as letters with Use when / Avoid when, and the model answers with one letter (`parseChoice`), like a decision model making a typed choice. It's marked ★ in the picker. If no model is loaded, the keyword order stands rather than making the user wait for a load. A 3B model's pick is a hint, not a verdict.
-3. **The rewrite.** `patternSystemPrompt(pattern, sections:)` gives the pattern as background (code blocks, headings and emphasis removed so the model can't copy them) and lists the exact headings to produce: the style's sections plus `WORKFLOW PATTERN: <title>, because …` after OBJECTIVE. With the first wording, a 3B model copied the pattern's headings and dropped four sections (check score 40). With exact headings, four patterns all kept the structure (score 100).
+3. **The rewrite.** A 3B model asked to restructure a prompt copies its old list and adds the pattern's name, so for an agent prompt code owns the structure (`Workflow.swift`). `workflowBlueprint(for:)` gives the phases and their gates: written by hand for the eight patterns the shortlist offers most, and by catalog category for the rest. `patternSystemPrompt(pattern, sections:)` asks the model for those phases, with the pattern as background (code blocks, headings and emphasis removed). `applyWorkflow` takes only each phase's task details from the reply, dropping echoes of the instructions and sentences copied from the catalog, and keeps ROLE, OBJECTIVE, CONTEXT, CONSTRAINTS and DONE WHEN from the prompt, so the model can't lose a fact. If it added details to no phase, the workflow still stands and the draft's steps follow it as a checklist. Other styles have no STEPS, and keep the old rewrite.
 4. **A new version.** The result is added to the dialog's versions; the first draft and any edits stay available.
 
 The catalog is a snapshot (`Resources/patterns.json`, 203 patterns) made by `scripts/update-patterns.sh` from the repository at a recorded commit. The app never downloads it. Only titles, metadata and a 1,200-character excerpt of each Solution section are included, with the Apache-2.0 license in `NOTICE-agentic-patterns.txt`.
+
+A first draft goes through `hardenAgentPrompt` (via `finishedPrompt`, also used by Replace Selection): the model's steps stay, and code adds any missing section, the work loop, `agentConstraints`, the original request (up to 600 characters, marked as taking priority) and any dropped fact. It's idempotent, and it leaves alone text with no sections (a refusal) and a custom `systemPrompt`.
 
 ## The prompt checker
 
@@ -225,6 +230,8 @@ The catalog is a snapshot (`Resources/patterns.json`, 203 patterns) made by `scr
 | An open `[CONFIRM: …]` question | 4 each, at most 20 |
 | DONE WHEN with nothing checkable (no number, and none of words such as pass, returns, shows, builds) | 10 |
 | A commit subject over 72 characters | 15 |
+| Agent prompts: no check of each step, no way to recover from a failure, or no point to stop and report | 5 each |
+| Agent prompts: `WORKFLOW PATTERN:` with fewer than two gates in STEPS, which names a pattern without applying it | 15 |
 
 The score is 100 minus the costs, at least 0. It measures "can I hand this to an agent as is", not writing quality.
 

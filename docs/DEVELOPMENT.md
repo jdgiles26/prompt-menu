@@ -17,7 +17,7 @@ Full Xcode isn't needed. There's no Xcode project and no Package.swift; every bu
 |---|---|---|
 | Run the tests | `scripts/test.sh` | Builds `Tests/` + `Sources/Core` and runs them. Exits non-zero on any failure. Runs from any folder. |
 | Build | `scripts/build.sh build` | Writes `build/Prompt Menu.app` (git-ignored). |
-| Install and register the Services item | `scripts/install.sh` | Builds into `~/Applications`, then runs `lsregister` and `pbs -update`. |
+| Install and register the Services item | `scripts/install.sh` | Quits the running copy, builds into `~/Applications`, then runs `lsregister`, unregisters `build/`'s copy, and runs `pbs -update`. |
 | Uninstall | `scripts/install.sh --uninstall` | |
 | Check the plist | `plutil -lint Resources/App-Info.plist` | CI runs this too. |
 | Check the signature | `codesign --verify --strict --deep "build/Prompt Menu.app"` | CI runs this too. |
@@ -59,12 +59,12 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 5. **Replace Selection**: a small "Rewriting…" window appears, then the highlighted text in TextEdit is replaced by the prompt. With a bad runner path, an error appears and the text is unchanged.
 6. **Warm model**: run two rewrites in a row with MLX. The second starts writing within about a second. A menu-bar icon appears after the first; its menu shows the time left and **Unload Model Now**. After Unload Model Now, `pgrep -f mlx_worker` prints nothing.
 7. **Check badge**: click it. A popover lists problems, or "No problems found." Delete the DONE WHEN line: the score drops.
-8. **Agentic Pattern…**: five patterns are listed; typing in the search field searches all of them; with the model loaded, one is marked ★ within a few seconds. Apply one: a new version `2 · <title>` appears with a `WORKFLOW PATTERN:` line. Pick version 1 again from the menu: the first draft is back.
+8. **Agentic Pattern…**: five patterns are listed; typing in the search field searches all of them; with the model loaded, one is marked ★ within a few seconds. Apply one: a new version `2 · <title>` appears with a `WORKFLOW PATTERN:` line, and STEPS has numbered phases with a `Gate:` under each. Pick version 1 again from the menu: the first draft is back.
 9. Edit the text, then apply a pattern: an `Edited` version is added before the new one.
 10. While a rewrite is running, click **Close**. Then `pgrep -f mlx_lm.generate` prints nothing (with keep-loaded at 0), or the worker is still there but idle.
 11. Press **Try Again** while it's running. Only one model run continues.
 12. **Copy** (⌘↩) puts the edited text on the clipboard and closes the dialog.
-13. **Explain This for Me**: highlight code in TextEdit and choose it. "Explaining with …" streams a TL;DR first, then the other sections. Agentic Pattern…, Fill Gaps…, Add Project… and the check badge aren't shown. Right-click a `.swift` or `.txt` file in Finder: the item is under Services (or Quick Actions) and explains the file. A `.png` doesn't offer it. (Run `/System/Library/CoreServices/pbs -flush` if a new item doesn't show.)
+13. **Explain This for Me**: highlight code in TextEdit and choose it. "Explaining with …" streams a TL;DR first, then the other sections. Agentic Pattern…, Fill Gaps…, Add Project… and the check badge aren't shown. Right-click a `.swift`, `.txt` or `.toml` file in Finder: the item is under Services (or Quick Actions) and explains the file. A `.png` or `.pdf` doesn't offer it. Right-click a file under `~/Library/Group Containers/` that the app hasn't read before: a window says macOS blocked it, and **Choose File…** then explains it (Open panel → that file → Explain). Check the log with `log show --last 1m --predicate 'eventMessage CONTAINS "PromptMenu" AND eventMessage CONTAINS "deny"'`. (Run `/System/Library/CoreServices/pbs -flush` if a new item doesn't show.)
 14. **Ask a follow-up**: it appears under the first result. Ask three questions: one about the text, one unrelated, one about an earlier answer. Each is answered, and the third shows the earlier turns were in context. While it answers, Ask is disabled; Close stops it (`pgrep -f llama-completion` or `mlx_lm.generate` prints nothing). A failure shows in the transcript and keeps the question in the field.
 13. While a rewrite is running, quit with ⌘Q (or `pkill -f MacOS/PromptMenu`). `pgrep -f "mlx_lm.generate|mlx_worker"` prints nothing.
 14. Close every window. With keep-loaded at 0, `pgrep -f "MacOS/PromptMenu"` prints nothing right away; otherwise the app quits when the model unloads (set Keep loaded to 1 to check in a minute).
@@ -75,7 +75,7 @@ The UI can't be tested automatically. After any change to `Sources/PromptMenu` o
 19. **Add Project…**: pick this repository. A `With prompt-menu` version mentions `scripts/test.sh` in its context.
 20. **Compare Models…** and **Review…** (Model menu) are greyed out while a model runs; Review is greyed out with no successful version, and **Review Log** until a review has run. Review with two models: the status shows judging, then each role; kept edits appear as `Hardened: …` versions; Review Log lists votes, the winner and a diff per role. Close during a review: no runner keeps running (`pgrep -f "llama-completion|mlx_lm.generate"`).
 
-To trigger the service without clicking, from a small Swift script:
+To trigger the service without clicking, from a small Swift script (for a Finder file, use `pb.writeObjects([URL(fileURLWithPath: path) as NSURL])` and `"Explain This for Me"`):
 
 ```swift
 import Cocoa
@@ -92,6 +92,8 @@ print(NSPerformService("Rewrite as Agent Prompt", pb))
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | No item under Services | Services cache is stale, or the item is turned off | `scripts/install.sh` again (it runs `pbs -update`); turn it on in System Settings → Keyboard → Keyboard Shortcuts → Services → Text; log out and back in as a last resort. |
+| Explain on a Finder file says macOS blocked it | App Data, or another folder protection. tccd logs `does not allow prompting; recording denied`, and the kernel logs `deny(1) file-read-data` with the path | **Choose File…**, which marks that file as allowed (a `com.apple.macl` attribute appears on it). The app takes no entitlement or permission for this. |
+| Changes don't seem to take effect in Services | A copy with old code answered: the app was still running, or a commit wasn't installed | `scripts/install.sh`, which quits the running copy. Compare the binary's date with the last commit, and check `lsregister -dump \| grep "path:.*Prompt Menu"` lists only `~/Applications`. A mounted or old `.dmg` holds old code too. |
 | The item exists but nothing happens | `NSMessage` and the method don't match | `scripts/test.sh` (`testServicesEntry`). Check `Console.app` for the `PromptMenu` process. |
 | The dialog is created but not visible | The panel hides when its app isn't frontmost | Keep `panel.hidesOnDeactivate = false` and `orderFrontRegardless()`. |
 | `Couldn't find mlx_lm.generate` | The program is outside the searched folders | Set the full path in settings (`which mlx_lm.generate` in Terminal). |

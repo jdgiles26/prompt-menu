@@ -62,3 +62,16 @@ func testPatternChoice() throws {
     // A style without sections keeps its format.
     check(patternSystemPrompt(options[0], sections: []).contains("Keep the prompt's format"), "commit messages keep their format")
 }
+
+// Task types pick workflows that suit them. Baseline: a bug fix was offered "Tool Selection Guide"
+// first, and a billing migration "Shipping as Research".
+func testPatternShortlistByTaskType() throws {
+    let patterns = try bundled()
+    func top(_ text: String) -> String? { shortlist(for: text, in: patterns).first?.slug }
+    checkEqual(top("The login page throws 500 when the cookie expired. Fix the bug."), "spec-as-test-feedback-loop")
+    checkEqual(top("Migrate billing from stripe v2 to v3, about 40 call sites."), "swarm-migration-pattern")
+    checkEqual(top("Research local vector databases and write up a recommendation."), "agent-driven-research")
+    for slugs in taskTypeWorkflows.map(\.slugs) {
+        for slug in slugs { check(patterns.contains { $0.slug == slug }, "\(slug) isn't in the catalog") }
+    }
+}

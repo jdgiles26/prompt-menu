@@ -86,3 +86,35 @@ func testExplainFileInput() throws {
     checkThrows(.unreadableFile("gone.txt")) { _ = try explainInput(files: [(dir as NSString).appendingPathComponent("gone.txt")]) }
     checkThrows(.emptyInput) { _ = try explainInput(files: []) }
 }
+
+// Bug: a file macOS refuses to open (a folder that belongs to another app) was reported as "not
+// text", with nothing to do about it. It's a different problem with a different way out.
+func testExplainProtectedFile() throws {
+    let dir = try makeTempFolder()
+    let locked = (dir as NSString).appendingPathComponent("locked.json")
+    try "{}".write(toFile: locked, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: locked) }
+    checkThrows(.protectedFile("locked.json")) { _ = try explainInput(files: [locked]) }
+    check(RewriteError.protectedFile("a").offersFileChooser, "a protected file can be chosen by hand")
+    check(!RewriteError.unreadableFile("a").offersFileChooser, "choosing a binary file by hand wouldn't help")
+    check(RewriteError.protectedFile("locked.json").localizedDescription.contains("locked.json"), "the message names the file")
+    check(protectedFileHelp("locked.json").contains("Full Disk Access"), "the last resort names the setting")
+    check(protectedFileHelp("locked.json").contains("highlight"), "and the way that needs no setting")
+}
+
+// Bug: an empty file sent only its name to the model, which then made an explanation up.
+func testExplainEmptyFile() throws {
+    let dir = try makeTempFolder()
+    let empty = (dir as NSString).appendingPathComponent("empty.txt")
+    try " \n ".write(toFile: empty, atomically: true, encoding: .utf8)
+    checkThrows(.emptyFile("empty.txt")) { _ = try explainInput(files: [empty]) }
+}
+
+// Windows logs and .strings files are text too.
+func testExplainUTF16File() throws {
+    let dir = try makeTempFolder()
+    let wide = (dir as NSString).appendingPathComponent("wide.log")
+    try "héllo".write(toFile: wide, atomically: true, encoding: .utf16)
+    checkEqual(try explainInput(files: [wide]), "File: wide.log\n\nhéllo")
+}

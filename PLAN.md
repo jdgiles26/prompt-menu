@@ -23,14 +23,35 @@ Source: the request for a right-click "Explain this for me" item in an ADHD-frie
 - [ ] Manual checks 13 and 14 in DEVELOPMENT.md: the UI isn't clicked through yet (the real-model runs above went through the Core pipeline, not the dialog)
 - [x] Committed as phase2-round1 to round3
 
+## Phase 3: Finder Explain fix and real agentic workflows
+
+Source: the request to review the service, permanently fix Explain This for Me from a right-click on a file in a Finder folder, and harden agentic rewrites, which "lacked true agentic workflow rewrites".
+
+Evidence (2026-11-05): three right-clicks on `~/Library/Group Containers/group.com.docker/unleash-v2-docker-desktop.json` each logged `System Policy: PromptMenu deny(1) file-read-data`, and tccd logged `kTCCServiceSystemPolicyAppDataDetailed does not allow prompting; recording denied`. The read failed, the service only set `error.pointee`, which Finder never shows, and the 0.5 s launch timer opened Settings. Baseline with Qwen 2.5 3B: applying a pattern copied the draft's STEPS word for word, added one `WORKFLOW PATTERN:` line, and scored 85.
+
+- [x] Round 1: Every Explain failure opens a dialog; protected files get a macOS-mediated Choose File path; a Services launch never opens Settings; empty and UTF-16 files; item offered on more text files (not PDFs or images, at the user's request)
+- [x] Round 2: `install.sh` stops the old process and unregisters the build copy, so Services can't run stale code
+- [x] Round 3: `Workflow.swift`: code-owned phases and gates for all 203 patterns, the model fills in task details; drafts get a work loop and every section; no fact dropped; the check scores workflow gaps; task-type shortlist
+- [x] Round 4: Docs, real-model before and after, install, cold-launch check
+- [x] Committed, at the user's request
+- [ ] Finder right-click on a blocked file, start to finish, confirmed by the user. Choose File's grant was seen in the logs from one click during testing; the whole flow hasn't been watched
+
 ## Open Questions
 
-- Explain This for Me on a Finder file in ~/Documents, ~/Desktop or ~/Downloads: does macOS show a privacy prompt for this unsandboxed app? Unverified. If it does, AGENTIC_DEVELOPMENT §6 says stop and ask; the fallback is text only.
+- ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.
 
 - §4 writes a prompt file, a `.command` script and `harnesses.json` outside the repo and `local.promptmenu`. AGENTIC_DEVELOPMENT §6 says to ask first, and guardrail 2.1 says user text isn't written to disk. Allowed?
 - ~~Model folders~~ Decided 2026-10-26: added to the user's own settings (`modelFolders`), not as code defaults. The app was set to MLX Gemma 12B, which doesn't fit in 8 GB and was the cause of failed rewrites; it now uses llama.cpp + `~/.kimi_openclaw/models/qwen2.5-3b-instruct-q4_k_m.gguf` (rewrite done in 8 s, check 81). Both Gemma 12B copies were deleted at the user's request.
 
 ## Found Along the Way
+
+- Files with no extension (`Makefile`, a file named exactly `.env`) don't offer Explain in Finder: there's no extension to declare as text and `public.data` would bring PDFs and images back. Highlighted text works for them.
+- AGENTS.md says "five Services items"; there are six since Explain. Not changed in Phase 3.
+- `Prompt Menu.dmg` in the repo root (untracked, Oct 30) holds code from before this phase. Mounting or installing from it brings the old behavior back. No script builds it.
+- The app was installed at 13:05 on Oct 30, before the phase2-round4 commit (13:53), so those fixes never reached Services until this phase's install.
+- `suggestPattern` (the ★) only runs with a kept-loaded MLX model, so on llama.cpp, the current backend here, the keyword and task-type order is all there is.
+- With a qwen2.5 3B reply, a phase's details can contradict its gate ("run the new test to ensure it passes" under RED, whose gate says it fails). The gate is still there; the checker doesn't compare them.
+- The model can still invent a limit such as "Do not modify any existing code". The original request now takes priority over it in the prompt's own words, but the line stays.
 
 - FLOW_MAPS' table of contents was missing flow 16 (Review); added with 17 and 18.
 - Asked to change one line in a rewrite dialog, Qwen 2.5 3B returns only the changed section, not the whole result the chat prompt asks for. It's an answer, so it's kept; the user copies the section by hand.

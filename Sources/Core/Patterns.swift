@@ -71,6 +71,22 @@ private func weightedTokens(_ p: AgenticPattern) -> [String: Double] {
 let generalPatternSlugs = ["plan-then-execute-pattern", "spec-as-test-feedback-loop", "self-critique-evaluator-loop",
                            "output-verification-loop", "discrete-phase-separation"]
 
+// Workflows that suit a kind of task, whatever its words. Checked in this order, first match wins.
+let taskTypeWorkflows: [(words: String, slugs: [String])] = [
+    ("\\b(research\\w*|compare|comparing|recommend\\w*|survey|write up)\\b", ["agent-driven-research", "discrete-phase-separation"]),
+    ("\\b(migrat\\w*|upgrad\\w*|port)\\b", ["swarm-migration-pattern", "plan-then-execute-pattern"]),
+    ("\\b(review|critique|audit|revise)\\b", ["self-critique-evaluator-loop", "reflection"]),
+    ("\\b(bugs?|fix|fixes|crash\\w*|errors?|exceptions?|regressions?|throws?|broken|failing)\\b", ["spec-as-test-feedback-loop", "output-verification-loop"]),
+]
+
+// What the task asks, not the steps a draft planned, which mention errors and fixes for any task.
+private func taskTypePicks(for text: String) -> [String] {
+    let sections = agentSections(in: text)
+    let objective = [sections["OBJECTIVE"], sections["CONTEXT"]].compactMap { $0 }.joined(separator: "\n")
+    let task = objective.isEmpty ? text : objective
+    return taskTypeWorkflows.first { task.range(of: $0.words, options: [.regularExpression, .caseInsensitive]) != nil }?.slugs ?? []
+}
+
 // Each pattern's fit for the text: word overlap weighted by field, rarer words counting more, and
 // a penalty for words that match the pattern's "Avoid when". Best first; no-match patterns left out.
 func rankPatterns(for text: String, in patterns: [AgenticPattern]) -> [(pattern: AgenticPattern, score: Double, matches: Int)] {
@@ -94,11 +110,14 @@ func rankPatterns(for text: String, in patterns: [AgenticPattern]) -> [(pattern:
     return scored.filter { $0.score > 0 }.sorted { $0.score > $1.score }
 }
 
-// The candidates to offer: keyword matches backed by at least three words of the prompt (fewer
-// are usually a coincidence), with two places kept for general workflows.
+// The candidates to offer: workflows for this kind of task first, then keyword matches backed by at
+// least three words of the prompt (fewer are usually a coincidence), with two places kept for general workflows.
 func shortlist(for text: String, in patterns: [AgenticPattern], count: Int = 5) -> [AgenticPattern] {
-    let ranked = rankPatterns(for: text, in: patterns)
-    var picks = ranked.filter { $0.matches >= 3 }.prefix(max(1, count - 2)).map(\.pattern)
+    let ranked = rankPatterns(for: removingStandardLines(text), in: patterns)
+    var picks = taskTypePicks(for: text).compactMap { slug in patterns.first { $0.slug == slug } }
+    for match in ranked where match.matches >= 3 && picks.count < max(1, count - 2) && !picks.contains(match.pattern) {
+        picks.append(match.pattern)
+    }
     // General workflows in the order the prompt's words favour them.
     let general = generalPatternSlugs.compactMap { slug in patterns.first { $0.slug == slug } }
     let order = Dictionary(ranked.map { ($0.pattern.slug, $0.score) }, uniquingKeysWith: max)
@@ -160,6 +179,8 @@ private extension String {
 
 // MARK: Rewriting a prompt around a pattern
 
+// For a prompt with STEPS, only the phases' details are used from the reply (see applyWorkflow); the
+// rest of the outline shows the model what the phases are for.
 // `sections` are the headings the prompt must keep (the style's). Small models copy whatever
 // headings they see, so the exact output headings are spelled out and the pattern's own text is
 // marked as background, with its code and headings removed.
@@ -167,7 +188,11 @@ func patternSystemPrompt(_ p: AgenticPattern, sections: [String] = Style.agentPr
     let patternLine = "WORKFLOW PATTERN: \(p.title), because <why it fits this task, in one sentence>"
     var outline: [String] = sections.map { section in
         switch section {
-        case "STEPS": return "STEPS: the pattern's phases applied to this task, numbered, with a checkpoint after each phase"
+        case "STEPS":
+            let phases = workflowBlueprint(for: p).phases.enumerated().map { i, phase in
+                "\(i + 1). \(phase.name): <how to do this for this task, by its real names: \(phase.action)>"
+            }
+            return (["STEPS:"] + phases).joined(separator: "\n")
         case "CONSTRAINTS": return "CONSTRAINTS: the prompt's constraints, plus the ones the pattern needs"
         case "DONE WHEN": return "DONE WHEN: the prompt's finish criteria, plus the pattern's"
         default: return "\(section): as in the prompt"
@@ -193,6 +218,7 @@ func patternSystemPrompt(_ p: AgenticPattern, sections: [String] = Style.agentPr
     Rules:
     - Keep every fact, name, number and [CONFIRM: …] from the prompt. Never invent details; write [CONFIRM: what to ask] instead.
     - Write about the user's task only, not about the pattern in general.
+    - Under STEPS, write exactly the numbered phases above, with those names, instead of the prompt's old list.
     - Reply with only the rewritten prompt: no preamble, no explanation.
     """
 }

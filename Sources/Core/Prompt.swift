@@ -11,7 +11,7 @@ ROLE: who the agent should act as, in one line.
 OBJECTIVE: the exact outcome wanted, in one or two sentences.
 CONTEXT: facts from the text the agent needs (files, tools, systems, people, links). Nothing else.
 STEPS: a numbered plan the agent can follow, starting with understanding the current state and ending with checking the result.
-CONSTRAINTS: what the agent must not do or change, and any limits on tools, time or scope.
+CONSTRAINTS: what the text says the agent must not do or change, and any limits on tools, time or scope. Never add a limit that blocks the objective.
 DONE WHEN: concrete, checkable signs that the task is finished.
 
 Rules:
@@ -35,6 +35,8 @@ enum RewriteError: Error, Equatable {
     case emptyOutput
     case modelError(String)  // The kept-loaded model replied with an error, such as a model that isn't downloaded.
     case unreadableFile(String)  // A file from Finder that isn't text, or can't be read.
+    case protectedFile(String)   // macOS or the file's permissions refused to open it.
+    case emptyFile(String)
 }
 
 extension RewriteError: LocalizedError {
@@ -52,8 +54,24 @@ extension RewriteError: LocalizedError {
         case .emptyOutput: return "The model didn't return any text."
         case .modelError(let message): return "The model couldn't answer.\n\n\(message)"
         case .unreadableFile(let name): return "Couldn't read \(name) as text. Explain This for Me works on text and code files."
+        case .protectedFile(let name):
+            return "macOS didn't let Prompt Menu open \(name). It's in a protected place, such as a folder that belongs to another app, and macOS blocks this without asking.\n\nIf you choose the file yourself, macOS can allow it."
+        case .emptyFile(let name): return "\(name) is empty, so there's nothing to explain."
         }
     }
+}
+
+extension RewriteError {
+    // Whether picking the file by hand can help: choosing it is what macOS treats as the user's consent.
+    var offersFileChooser: Bool {
+        if case .protectedFile = self { return true }
+        return false
+    }
+}
+
+// When even choosing the file didn't help. Prompt Menu asks for no permissions, so this only says what the user can do.
+func protectedFileHelp(_ name: String) -> String {
+    "macOS still won't let Prompt Menu open \(name).\n\nTo explain it anyway, open it in another app, highlight the text, and use Explain This for Me on that. Or, if you want Prompt Menu to read protected files, add it under System Settings → Privacy & Security → Full Disk Access. That's your call: the app doesn't need it for anything else, and each rebuild resets it."
 }
 
 // Trimmed, non-empty and no longer than maxInputCharacters.
@@ -73,19 +91,34 @@ func explainInput(files: [String]) throws -> String {
     for path in files where text.count < maxInputCharacters {
         let name = (path as NSString).lastPathComponent
         var isFolder: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), !isFolder.boolValue,
-              let handle = FileHandle(forReadingAtPath: path) else { throw RewriteError.unreadableFile(name) }
-        defer { try? handle.close() }
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), !isFolder.boolValue else { throw RewriteError.unreadableFile(name) }
+        // open() rather than FileHandle(forReadingAtPath:), whose nil can't tell "macOS refused" from "gone".
+        // Non-blocking, so a named pipe can't hang the app while Finder waits.
+        let descriptor = open(path, O_RDONLY | O_NONBLOCK)
+        guard descriptor >= 0 else {
+            throw errno == EPERM || errno == EACCES ? RewriteError.protectedFile(name) : RewriteError.unreadableFile(name)
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         // read(upToCount:) throws on an I/O error (a drive pulled mid-read); readData raises an
         // Objective-C exception that Swift can't catch.
         guard let data = try? handle.read(upToCount: readLimit) ?? Data() else { throw RewriteError.unreadableFile(name) }
-        var contents = String(data: data, encoding: .utf8)
-        // The read may stop inside a character; only then drop its first bytes.
-        for drop in 1...3 where contents == nil && data.count == readLimit { contents = String(data: data.dropLast(drop), encoding: .utf8) }
-        guard let contents, !contents.contains("\u{0}") else { throw RewriteError.unreadableFile(name) }
-        text += (text.isEmpty ? "" : "\n\n") + "File: \(name)\n\n\(contents.trimmingCharacters(in: .whitespacesAndNewlines))"
+        guard let contents = decodedText(data, wasCut: data.count == readLimit), !contents.contains("\u{0}") else { throw RewriteError.unreadableFile(name) }
+        let body = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { throw RewriteError.emptyFile(name) }
+        text += (text.isEmpty ? "" : "\n\n") + "File: \(name)\n\n\(body)"
     }
     return String(text.prefix(maxInputCharacters))
+}
+
+// UTF-8, or UTF-16 with its byte order mark. A read that stopped early may have ended inside a
+// character; only then are its last bytes dropped.
+private func decodedText(_ data: Data, wasCut: Bool) -> String? {
+    if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
+        return String(data: wasCut ? data.prefix(data.count & ~1) : data, encoding: .utf16)
+    }
+    var contents = String(data: data, encoding: .utf8)
+    for drop in 1...3 where contents == nil && wasCut { contents = String(data: data.dropLast(drop), encoding: .utf8) }
+    return contents
 }
 
 // For runners that take a single prompt and no separate system prompt.

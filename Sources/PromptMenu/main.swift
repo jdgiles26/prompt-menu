@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panels: [ResultPanelController] = []
     private var handledService = false
     private var replacing = false
+    private var failurePanels: [FailurePanelController] = []
     private var warm: WarmRunner?
     private var statusItem: NSStatusItem?
     private let modelMenus = NSHashTable<NSMenu>.weakObjects()
@@ -15,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         },
         replace: { [weak self] text in
             self?.replaceInPlace(text) ?? .failure(RewriteError.emptyOutput)
+        },
+        onFailure: { [weak self] error, files in
+            self?.showFailure(error, files: files)
         })
 
     // Before the Services request arrives: the result panel's text view needs the Edit menu for ⌘C, ⌘V, ⌘A, ⌘Z.
@@ -24,9 +28,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let isDefaultLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
         // Launched by the Services menu, the request arrives right away; otherwise the user opened the app.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if !self.handledService && self.panels.isEmpty { self.showSettings() }
+            if showsSettingsAtLaunch(isDefaultLaunch: isDefaultLaunch, handledService: self.handledService, hasWindows: !self.panels.isEmpty || !self.failurePanels.isEmpty) {
+                self.showSettings()
+            }
+        }
+        // Launched for a request that never came: don't stay running with nothing on screen.
+        if !isDefaultLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self.finish() }
         }
     }
 
@@ -73,11 +84,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         defer { progress.close() }
         var result: Result<String, Error>?
         DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = Result { try rewrite(text, config: config, warm: warm, timeout: inPlaceTimeout) }
+            let outcome = Result {
+                finishedPrompt(try rewrite(text, config: config, warm: warm, timeout: inPlaceTimeout), style: .agentPrompt, source: text,
+                               builtInInstructions: config.systemPrompt == agentSystemPrompt).text
+            }
             DispatchQueue.main.async { result = outcome }
         }
         while result == nil { RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05)) }
         return result!
+    }
+
+    // MARK: When a request fails
+
+    // Registered here and now, not later: the in-place item's finish() is already on its way, and
+    // would quit the app before this window existed.
+    private func showFailure(_ error: Error, files: [URL]) {
+        handledService = true
+        let panel = FailurePanelController(error: error, files: files) { [weak self] chosen in
+            let text = try explainInput(files: chosen.map(\.path))
+            self?.showRewrite(of: text, style: .explain)
+        }
+        panel.onClose = { [weak self, weak panel] in
+            self?.failurePanels.removeAll { $0 === panel }
+            self?.finish()
+        }
+        failurePanels.append(panel)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.showWindow(nil)
+        panel.window?.orderFrontRegardless()
     }
 
     // MARK: Keeping the model loaded
@@ -185,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Quit once nothing is on screen and no model is kept loaded, so no memory is left behind.
     private func finish() {
         DispatchQueue.main.async {
-            if self.settingsWindow == nil && self.panels.isEmpty && !self.replacing && self.warm?.isLoaded != true {
+            if self.settingsWindow == nil && self.panels.isEmpty && !self.replacing && self.failurePanels.isEmpty && self.warm?.isLoaded != true {
                 NSApp.terminate(nil)
             }
         }

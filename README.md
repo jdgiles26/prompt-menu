@@ -35,11 +35,13 @@ Wherever your notes leave something out, the model writes `[CONFIRM: what to ask
 
 Every dialog has an **Ask a follow-up** box under the result. Ask anything about the text or the result; each question is sent to the same local model with the highlighted text, the result as it is now (edits included) and the conversation so far. The conversation isn't saved.
 
+**If macOS blocks a file.** macOS doesn't let apps read some files without asking, such as those in another app's folder under `~/Library/Group Containers`. Explain This for Me then says so and offers **Choose File…**. Pick the file there and macOS lets Prompt Menu read that file from then on. Prompt Menu asks for no permissions of its own.
+
 ## The dialog
 
 - **Versions.** Every result is kept: `1 · First draft`, `2 · Plan-Then-Execute Pattern`, `3 · Edited`… Pick any of them from the menu at the top left. Your edits are saved as their own version before a pattern is applied.
 - **Check.** The badge shows a score out of 100 and the number of `[CONFIRM: …]` questions. Click it for the list of problems.
-- **Agentic Pattern…** Shows the five patterns that best fit the prompt, plus a search over all of them. If the model is already loaded, it suggests one (★). **Apply** rewrites the current text around that workflow, adding a `WORKFLOW PATTERN: …, because …` line, and keeps everything else as a new version.
+- **Agentic Pattern…** Shows five patterns that fit the prompt, starting with workflows for its kind of task (a bug fix, a migration, research, a review), plus a search over all of them. If the model is already loaded, it suggests one (★). **Apply** rebuilds the current text as phases, each with a gate that must pass before the next, plus a `WORKFLOW PATTERN:` line. The app writes the phases and gates, and the model adds your task's details, so the workflow is there even when a small model adds little. Every earlier version stays available.
 - **Model menu.** Lists the models already on this Mac (MLX models in the Hugging Face cache, `.gguf` files in the model folders from settings), each labeled MLX or GGUF with its size, so the same model in two formats is clear. Picking one saves it and runs the last step again. If the saved model was deleted, the dialog says so and opens this menu instead of failing. Nothing is downloaded.
 - **Fill Gaps…** appears when the text has `[CONFIRM: …]` questions. Answers replace their markers exactly, without a model; **Polish** optionally smooths the wording afterwards.
 - **Add Project…** picks a folder and adds the headings and commands from its `AGENTS.md`, `CLAUDE.md` and README to the prompt's context. Nothing is read until you pick the folder.

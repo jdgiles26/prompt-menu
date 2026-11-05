@@ -84,4 +84,30 @@ func testExplainStyle() throws {
     let fileTypes = service["NSSendFileTypes"] as? [String] ?? []
     check(fileTypes.contains("public.plain-text") && fileTypes.contains("public.source-code"),
           "Explain This for Me should show on text and code files in Finder")
+    // public.data would also match PDFs and images, which can't be explained, so it stays out.
+    check(!fileTypes.contains("public.data") && !fileTypes.contains("public.item") && !fileTypes.contains("public.content"),
+          "Explain This for Me shouldn't show on PDFs and images")
+    check(fileTypes.contains("public.text"), "HTML, YAML and other text formats aren't public.plain-text")
+    // macOS has no type for these text formats, so Finder wouldn't offer the item without this.
+    let imported = plist["UTImportedTypeDeclarations"] as? [[String: Any]] ?? []
+    let extensions = imported.flatMap { (($0["UTTypeTagSpecification"] as? [String: Any])?["public.filename-extension"] as? [String]) ?? [] }
+    for name in ["toml", "sql", "env", "ini", "conf", "cfg"] { check(extensions.contains(name), "\(name) should count as text") }
+    for type in imported { check((type["UTTypeConformsTo"] as? [String])?.contains("public.plain-text") == true, "imported types are plain text") }
+}
+
+// Bug: Settings opened after a Services launch whose request had failed, in place of any message.
+func testLaunchShowsSettingsOnlyWhenOpenedDirectly() throws {
+    check(showsSettingsAtLaunch(isDefaultLaunch: true, handledService: false, hasWindows: false), "opened directly")
+    check(!showsSettingsAtLaunch(isDefaultLaunch: false, handledService: false, hasWindows: false), "launched for a Service")
+    check(!showsSettingsAtLaunch(isDefaultLaunch: true, handledService: true, hasWindows: false), "a request already arrived")
+    check(!showsSettingsAtLaunch(isDefaultLaunch: true, handledService: false, hasWindows: true), "a window is already open")
+}
+
+// Finder doesn't show a service's error string, so a failure that only sets it looks like nothing happened.
+func testServiceFailuresReachTheUser() throws {
+    let source = try String(contentsOfFile: "Sources/PromptMenu/Service.swift", encoding: .utf8)
+    check(source.contains("onFailure"), "Service.swift should hand failures to the app to show")
+    let explain = source.components(separatedBy: "func explainThisForMe").last?.components(separatedBy: "@objc").first ?? ""
+    check(explain.contains("onFailure"), "explainThisForMe must show its failures")
+    check(!explain.contains("error.pointee"), "explainThisForMe's failures must not end at the error string")
 }

@@ -245,7 +245,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             input = source
         case .pattern(let pattern, let text):
             config.systemPrompt = patternSystemPrompt(pattern, sections: style.sections)
-            input = text
+            input = style == .agentPrompt ? removingStandardLines(text) : text
         case .polish(let text):
             config.systemPrompt = polishSystemPrompt(sections: style.sections)
             input = text
@@ -275,7 +275,8 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         startClock()
         let warm = warmRunner(config)
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try rewrite(input, config: config, warm: warm, started: { stop in
+            let result = Result { () throws -> String in
+                let output = try rewrite(input, config: config, warm: warm, started: { stop in
                 // Closed or retried before the runner started: nothing else will stop it.
                 DispatchQueue.main.async { if mine == self.generation { self.stopRunning = stop } else { stop() } }
             }, progress: { soFar in
@@ -286,7 +287,18 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                 }
             }, notice: { message in
                 DispatchQueue.main.async { if mine == self.generation { self.notice = message } }
-            }) }
+            })
+                let finished: (text: String, notice: String?)
+                if case .pattern(let pattern, let before) = operation {
+                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: true, pattern: pattern, before: before)
+                } else {
+                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: config.systemPrompt == agentSystemPrompt)
+                }
+                if let notice = finished.notice {
+                    DispatchQueue.main.async { if mine == self.generation { self.notice = notice } }
+                }
+                return finished.text
+            }
             DispatchQueue.main.async {
                 guard mine == self.generation else { return }
                 self.stopRunning = nil
