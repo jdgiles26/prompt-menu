@@ -39,7 +39,9 @@ final class ModelsSheet: NSWindowController {
 
     private func layout(in window: NSWindow) {
         let intro = NSTextField(wrappingLabelWithString: self.intro)
-        let list = NSStackView(views: boxes + [optionBox].compactMap { $0 })
+        // Typed on its own line: the macos-15 CI compiler calls `+` ambiguous when the result has to become [NSView].
+        let choices: [NSButton] = boxes + [optionBox].compactMap { $0 }
+        let list = NSStackView(views: choices)
         list.orientation = .vertical
         list.alignment = .leading
         estimate.textColor = .secondaryLabelColor

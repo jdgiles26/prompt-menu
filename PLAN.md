@@ -46,6 +46,12 @@ Source: the request that Explain This for Me run on "folders, non file extension
 - [x] Round 3: README, ARCHITECTURE and FLOW_MAPS rewritten around what the app does, how, its benefits, assets and privacy, with flows 19 to 23
 - [x] Committed and pushed to main, at the user's request
 
+## Phase 5: CI green on macos-15
+
+Source: the user's OK to fix the compile error at `ModelsSheet.swift:42`, which failed CI's Build step on macos-15 in runs 41114695811 and 42075242383.
+
+- [x] Round 1: the buttons get their own `[NSButton]` type before becoming the stack view's `[NSView]`. The local Swift 6.4 never hit this error, so CI's macos-15 job is the test
+
 ## Open Questions
 
 - ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.
