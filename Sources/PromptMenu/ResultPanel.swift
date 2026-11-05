@@ -137,6 +137,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         modelPopup.controlSize = .small
         modelPopup.toolTip = "The models on this Mac. Picking one runs the last step again with it."
         modelPopup.menu?.delegate = self
+        (modelPopup.cell as? NSPopUpButtonCell)?.altersStateOfSelectedItem = false  // The tick shows the model in use, nothing else.
         modelPopup.menu?.autoenablesItems = false // Otherwise any item with a target shows as enabled.
         refreshModelPopup()
 
@@ -405,12 +406,18 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private func refreshModelPopup() {
         guard let menu = modelPopup.menu else { return }
         menuNeedsUpdate(menu)
-        if let current = menu.items.first(where: { $0.state == .on }) { modelPopup.select(current) }
     }
 
+    // AppKit also calls this on its own (opening the menu, matching key equivalents). Rebuilding drops
+    // the selection, and the popup then showed the first model as if it were the one in use.
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        modelMenuItems { [weak self] _ in self?.modelPicked() }.forEach(menu.addItem)
+        // The current model, found before the popup can tick its own pick (it selects the first item
+        // after a rebuild and ticks that, which made the first model look like the one in use).
+        let items = modelMenuItems { [weak self] _ in self?.modelPicked() }
+        let current = items.first { $0.state == .on }
+        items.forEach(menu.addItem)
+        if let current { modelPopup.select(current) }
         menu.addItem(.separator())
         let compare = ActionMenuItem(title: "Compare Models…") { [weak self] in self?.compareModels() }
         compare.isEnabled = !isRunning && !modelsOnThisMac().isEmpty

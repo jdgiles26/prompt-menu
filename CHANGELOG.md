@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed: the dialog's model menu could show the first model on the list instead of the one in use (the popup ticked its own pick after the menu was rebuilt). It showed whenever the current model wasn't first alphabetically.
 - **Agentic patterns fill their phases with your task.** For an agent prompt the model is asked for one line per phase, not the whole prompt, so it can't just copy the old list; code it writes and bare names are dropped. Building something ("add", "implement"…) now offers Spec-As-Test (when tests are asked for) or Plan-Then-Execute first.
 - Explanations put each bullet on its own line when the model runs them together.
 - Image text is read with Vision's fast mode: the accurate one spent about 40 s getting ready the first time.
