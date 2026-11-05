@@ -328,3 +328,12 @@ func testExplanationBulletsOnTheirOwnLines() throws {
     check(fixed.contains("TL;DR: settings-store.json stores settings for Docker - the desktop app."), fixed)
     check(fixed.contains("NEXT STEPS:\n- Check the Docker settings."), fixed)
 }
+
+// Seen in the final demo (2026-11-05): "dont change the notes.json format" became "Don't change the
+// notes", cut at the dot in the file name; and a single bullet stayed on its heading's line.
+func testDemoRepairs() throws {
+    checkEqual(statedLimits(in: "add a test. dont change the notes.json format. ok"), ["Don't change the notes.json format"])
+    checkEqual(statedLimits(in: "never touch v2.3.1, dont log"), ["Never touch v2.3.1", "Don't log"])
+    let fixed = finishedExplanation("KEY PARTS: – **Session**: The type.\n– **userId**: The property.\nWATCH OUT FOR: – Check the type.")
+    checkEqual(fixed, "KEY PARTS:\n- **Session**: The type.\n– **userId**: The property.\nWATCH OUT FOR:\n- Check the type.")
+}

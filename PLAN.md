@@ -63,6 +63,8 @@ Source: "fix all the known issues, bugs and ensure the built in prompts for each
 
 - [x] Round 5: the user's model moved out of other apps' folders: the two GGUFs hard-linked into `~/models` (a default search folder; same files, no extra space), the `model` setting pointed there and `modelFolders` emptied, so Settings no longer shows `.kimi_openclaw` or `Meeting-prompter-v2`. That showed a bug: the dialog's model menu showed the first model, not the one in use. Fixed and seen in the app
 
+- [x] Round 6: final recorded walkthrough of every feature on a clean screen (Settings and the model list, Explain on an image and a folder with a follow-up, an agent prompt with a chat edit, a pattern and Send To, Bug Report, Code Review Request, Commit Message). Fixed, test first, what it showed: a stated limit cut at the dot in `notes.json`, and a lone bullet left on its heading's line
+
 ## Open Questions
 
 - ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.

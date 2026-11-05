@@ -152,6 +152,7 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("pattern shortlist: feature work", testShortlistForFeatureWork),
     ("workflow: phase details aren't code", testPhaseDetailsAreNotCode),
     ("explain: bullets on their own lines", testExplanationBulletsOnTheirOwnLines),
+    ("hardening: demo repairs", testDemoRepairs),
     ("launch: settings only when opened directly", testLaunchShowsSettingsOnlyWhenOpenedDirectly),
     ("service failures reach the user", testServiceFailuresReachTheUser),
     ("check: workflow gaps", testCheckerWorkflowGaps),

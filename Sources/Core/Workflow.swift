@@ -254,10 +254,10 @@ private func limitWords(_ text: String) -> Set<String> {
 
 private let negation = "(?:don['’]?t|do not|never|must not|mustn['’]?t|avoid)"
 private let limitRegex = try! NSRegularExpression(pattern:
-    "(?im)(?:^|[.,;:!?(]\\s*|\\b(?:and|but|also|please|pls|just|so)\\s+)(\(negation)\\b(?!\\s+mind\\b)[^.,;!?\\n]*)")
+    "(?im)(?:^|[.,;:!?(]\\s*|\\b(?:and|but|also|please|pls|just|so)\\s+)(\(negation)\\b(?!\\s+mind\\b)(?:[^.,;!?\\n]|[.,](?=\\w))*)")
 
 // The limits the user stated, as clauses that start a sentence or follow a comma: "dont touch the db
-// schema". A "never" inside a description ("the cache never expires") isn't one.
+// schema". A dot or comma inside a word (notes.json, v2.3.1) doesn't end the clause. A "never" inside a description ("the cache never expires") isn't one.
 func statedLimits(in source: String) -> [String] {
     let ns = source as NSString
     return limitRegex.matches(in: source, range: NSRange(location: 0, length: ns.length)).compactMap { match in

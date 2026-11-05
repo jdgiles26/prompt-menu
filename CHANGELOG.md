@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed: a limit naming a file, such as "dont change the notes.json format", was cut at the file name's dot. A bullet sitting on its heading's line in an explanation moves to a line of its own.
 - Fixed: the dialog's model menu could show the first model on the list instead of the one in use (the popup ticked its own pick after the menu was rebuilt). It showed whenever the current model wasn't first alphabetically.
 - **Agentic patterns fill their phases with your task.** For an agent prompt the model is asked for one line per phase, not the whole prompt, so it can't just copy the old list; code it writes and bare names are dropped. Building something ("add", "implement"…) now offers Spec-As-Test (when tests are asked for) or Plan-Then-Execute first.
 - Explanations put each bullet on its own line when the model runs them together.

@@ -114,7 +114,7 @@ private let inlineBullet = "(?:^|\\s)[–—-]\\s+(?=\\*\\*|[A-Z\"`])"
 
 // An explanation with each bullet on its own line. Small models sometimes run a section's bullets
 // together after its heading ("KEY PARTS: – **a**: x – **b**: y"), which defeats the easy-to-scan layout.
-// Two bullets or more on a line count; one dash in a sentence doesn't.
+// Two bullets or more on a line count, or one right after its heading; one dash in a sentence doesn't.
 func finishedExplanation(_ text: String) -> String {
     text.components(separatedBy: "\n").map { line -> String in
         let ns = line as NSString
@@ -125,7 +125,8 @@ func finishedExplanation(_ text: String) -> String {
         }
         let restNS = rest as NSString
         let bullets = try! NSRegularExpression(pattern: inlineBullet).matches(in: rest, range: NSRange(location: 0, length: restNS.length))
-        guard bullets.count >= 2, bullets[0].range.location == 0 else { return line }
+        // Two or more run together, or one right after its heading ("KEY PARTS: – **a**: x").
+        guard bullets.count >= (head.isEmpty ? 2 : 1), bullets.first?.range.location == 0 else { return line }
         let items = rest.replacingOccurrences(of: inlineBullet, with: "\n", options: .regularExpression)
             .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         return ([head].filter { !$0.isEmpty } + items.map { "- \($0)" }).joined(separator: "\n")
