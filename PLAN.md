@@ -52,6 +52,15 @@ Source: the user's OK to fix the compile error at `ModelsSheet.swift:42`, which 
 
 - [x] Round 1: the buttons get their own `[NSButton]` type before becoming the stack view's `[NSView]`. The local Swift 6.4 never hit this error, so CI's macos-15 job is the test
 
+## Phase 6: every known issue fixed, every built-in prompt checked
+
+Source: "fix all the known issues, bugs and ensure the built in prompts for each step and feature are functioning as i have stated i want them to work". What was stated: Explain in depth, in the easy-to-scan style, on any file or folder, with a chat that answers every follow-up; agentic rewrites that are real workflows; models found on the Mac, not hardcoded; every FEATURE_FUTURE item built.
+
+- [x] Round 1: every built-in prompt run on Qwen 2.5 3B (draft, each style, pattern, suggestion, chat); repairs in code with tests from those replies (stated and invented limits, bullets, invented names and numbers, RED vs gate, commit message shape, echoed instructions, SCOPE); prompt changes for Commit Message, Code Review, Explain and the chat; chat edits become a version; image text via Vision; Finder reading off the main thread with a limit; out-of-memory message; Explain spinner position; chat transcript cached
+- [ ] Round 2: FEATURE_FUTURE §4 Send to a coding agent's CLI
+- [ ] Round 3: FEATURE_FUTURE §6 items that fit the rules
+- [ ] Round 4: manual checks in the app, docs, push
+
 ## Open Questions
 
 - ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.
@@ -61,25 +70,25 @@ Source: the user's OK to fix the compile error at `ModelsSheet.swift:42`, which 
 
 ## Found Along the Way
 
-- Images get only type, size and dimensions, not what they show: the text model can't see them, and OCR wasn't added.
+- ~~Images get only type, size and dimensions.~~ Phase 6: their text is read with Vision; what they show otherwise still can't be seen.
 - A walk from a home folder can touch ~/Documents, ~/Desktop and similar. Tested from this app's harness and through a Services launch of other folders, but not a Services launch on `~` itself, so whether macOS asks or blocks there is unverified. Blocked subfolders are marked in the layout.
 - Finder only flattens Services into the context menu's top level when there are few, so its position varies. That's macOS behavior.
 
 - ~~Files with no extension don't offer Explain in Finder.~~ Fixed in Phase 4.
 - ~~AGENTS.md says "five Services items".~~ Fixed in Phase 4.
-- PDFKit opening a file and reads from a slow disk have no time limit, and `explainThisForMe` waits for them on the main thread. Folders, databases and system tools do have limits.
-- `Prompt Menu.dmg` in the repo root (untracked, Oct 30) holds code from before this phase. Mounting or installing from it brings the old behavior back. No script builds it.
+- ~~PDFKit opening a file and reads from a slow disk have no time limit, and `explainThisForMe` waits for them on the main thread.~~ Fixed in Phase 6: read off the main thread, 45 s limit.
+- ~~`Prompt Menu.dmg` in the repo root holds old code.~~ Removed at the user's request (it's gone from the repo root).
 - The app was installed at 13:05 on Oct 30, before the phase2-round4 commit (13:53), so those fixes never reached Services until this phase's install.
-- `suggestPattern` (the ★) only runs with a kept-loaded MLX model, so on llama.cpp, the current backend here, the keyword and task-type order is all there is.
-- With a qwen2.5 3B reply, a phase's details can contradict its gate ("run the new test to ensure it passes" under RED, whose gate says it fails). The gate is still there; the checker doesn't compare them.
-- The model can still invent a limit such as "Do not modify any existing code". The original request now takes priority over it in the prompt's own words, but the line stays.
+- `suggestPattern` (the ★) only runs with a kept-loaded MLX model. Kept that way on purpose in Phase 6: Qwen 2.5 3B picked worse than the keyword order (docs/DECISIONS.md).
+- ~~A phase's details can contradict its gate (RED "ensure it passes").~~ Fixed in Phase 6.
+- ~~The model can invent a limit such as "Do not modify any existing code".~~ Fixed in Phase 6: dropped when it's about nothing the user mentioned.
 
 - FLOW_MAPS' table of contents was missing flow 16 (Review); added with 17 and 18.
-- Asked to change one line in a rewrite dialog, Qwen 2.5 3B returns only the changed section, not the whole result the chat prompt asks for. It's an answer, so it's kept; the user copies the section by hand.
-- The transcript is rebuilt whole on every streamed chunk, and the "You:/Assistant:" format is written in Chat.swift and ResultPanel.swift. Unmeasured; only matters for long chats.
-- A Metal out-of-memory failure during a run (seen once, transient, at 74% free memory afterwards) shows as "The model runner stopped with exit code 1" plus the log tail. A plainer message for out-of-memory would help on 8 GB Macs.
-- In Explain dialogs the spinner keeps its place after the hidden Add Project button, so it sits a little to the right. Cosmetic.
+- ~~Asked to change one line, Qwen 2.5 3B returns only the changed section; the user copies it by hand.~~ Fixed in Phase 6: merged into a new version.
+- ~~The transcript is rebuilt whole on every streamed chunk, and its format is written twice.~~ Fixed in Phase 6.
+- ~~A Metal out-of-memory failure shows only as exit code 1.~~ Fixed in Phase 6.
+- ~~In Explain dialogs the spinner sits after the hidden Add Project button.~~ Fixed in Phase 6.
 - Qwen 2.5 3B sometimes answers a follow-up wrongly rather than not at all (asked to repeat a number from an earlier answer that had none, it said "1"). The guard catches non-answers, not wrong answers.
 
-- An LFM2.5 1.2B first draft ended with "Reply with only the prompt:" (an echoed instruction). `cleanOutput` doesn't remove it.
+- ~~An echoed "Reply with only the prompt:" isn't removed.~~ Fixed in Phase 6.
 - Manual UI check of Review not done by clicking through; the Core pipeline was run with real models instead.

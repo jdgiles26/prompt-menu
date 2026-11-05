@@ -37,6 +37,7 @@ enum RewriteError: Error, Equatable {
     case unreadableFile(String)  // Something from Finder that's gone, or that couldn't be read.
     case protectedFile(String)   // macOS or the file's permissions refused to open it.
     case emptyFile(String)
+    case slowRead(String)  // Reading what Finder sent took longer than readTimeLimit.
 }
 
 extension RewriteError: LocalizedError {
@@ -49,7 +50,12 @@ extension RewriteError: LocalizedError {
         case .modelMissing(let model):
             return "\(model) isn't on this Mac. It may have been deleted. Choose a model that is from the Model menu, or in Prompt Menu's settings."
         case .failed(let status, let message):
-            return "The model runner stopped with exit code \(status).\n\n\(message.isEmpty ? "It printed no error." : message)"
+            let details = message.isEmpty ? "It printed no error." : message
+            // Metal says so in its own words, which mean little to most people; 8 GB Macs hit this.
+            if message.range(of: "out ?of ?memory|insufficient memory|failed to allocate|cannot allocate memory", options: [.regularExpression, .caseInsensitive]) != nil {
+                return "The model ran out of memory. Close other apps, or choose a smaller model from the Model menu, then Try Again.\n\n\(details)"
+            }
+            return "The model runner stopped with exit code \(status).\n\n\(details)"
         case .timedOut: return "The model took too long and was stopped. Try a smaller model or shorter text."
         case .emptyOutput: return "The model didn't return any text."
         case .modelError(let message): return "The model couldn't answer.\n\n\(message)"
@@ -57,6 +63,8 @@ extension RewriteError: LocalizedError {
         case .protectedFile(let name):
             return "macOS didn't let Prompt Menu open \(name). It's in a protected place, such as a folder that belongs to another app, and macOS blocks this without asking.\n\nIf you choose it yourself, macOS can allow it."
         case .emptyFile(let name): return "\(name) is empty, so there's nothing to explain."
+        case .slowRead(let name):
+            return "Reading \(name) took too long, so Prompt Menu stopped waiting. It may be on a slow or disconnected disk, or be a file macOS has trouble opening."
         }
     }
 }
@@ -112,6 +120,49 @@ func explainInput(files: [String]) throws -> String {
     if worked == 0, let firstFailure { throw firstFailure }
     if !leftOver.isEmpty { parts.append("Also selected, not looked at: " + leftOver.joined(separator: ", ")) }
     return String(parts.joined(separator: "\n\n").prefix(maxInputCharacters))
+}
+
+// How long Explain waits for what Finder sent to be read. Folders, databases and system tools have
+// their own limits; this covers the rest (PDFKit on a broken file, a disk that stopped answering).
+let readTimeLimit: TimeInterval = 45
+
+// Reads the items off the calling thread, so the app stays responsive. `done` is called once, on a
+// background queue: with the input, or with slowRead when `timeout` passes first. A read that hangs
+// can't be cancelled, so it's left to finish and its result is ignored.
+func readItems(_ paths: [String], timeout: TimeInterval = readTimeLimit,
+               read: @escaping ([String]) throws -> String = { try explainInput(files: $0) },
+               done: @escaping (Result<String, Error>) -> Void) {
+    final class Once { let lock = NSLock(); var called = false }
+    let once = Once()
+    let finish = { (result: Result<String, Error>) in
+        once.lock.lock()
+        let first = !once.called
+        once.called = true
+        once.lock.unlock()
+        if first { done(result) }
+    }
+    let name = ((paths.first ?? "") as NSString).lastPathComponent
+    DispatchQueue.global(qos: .userInitiated).async { finish(Result { try read(paths) }) }
+    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { finish(.failure(RewriteError.slowRead(name))) }
+}
+
+// Lines a small model copied from its instructions, such as "Reply with only the prompt:" at the
+// end. A line counts when it's at least 20 characters and the start of an instruction line (or the
+// other way round), bullets aside, and the user's own text doesn't have it.
+func removingEchoedInstructions(_ text: String, instructions: String, input: String) -> String {
+    func normal(_ line: String) -> String {
+        line.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "^(?:[-*•]|\\d+[.)])\\s+", with: "", options: .regularExpression).lowercased()
+    }
+    let rules = instructions.components(separatedBy: "\n").map(normal).filter { $0.count >= 20 }
+    let own = input.lowercased()
+    guard !rules.isEmpty else { return text }
+    let kept = text.components(separatedBy: "\n").filter { line in
+        let key = normal(line)
+        guard key.count >= 20, !own.contains(key) else { return true }
+        return !rules.contains { $0.hasPrefix(key) || key.hasPrefix($0) }
+    }
+    return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 // For runners that take a single prompt and no separate system prompt.

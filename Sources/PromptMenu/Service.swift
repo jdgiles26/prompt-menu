@@ -7,15 +7,18 @@ final class ServiceProvider: NSObject {
     private let onText: (String, Style) -> Void
     private let replace: (String) -> Result<String, Error>
     private let onFailure: (Error, [URL]) -> Void
+    private let onFiles: ([URL]) -> Void
 
     // `onText` opens a dialog. `replace` returns the rewritten text, blocking until it's ready.
     // `onFailure` shows what went wrong: Finder doesn't show a service's error string, so a failure
     // that only sets it looks like nothing happened. It gets the files involved, if any.
+    // `onFiles` gets what Finder sent to Explain; it reads them off the main thread.
     init(onText: @escaping (String, Style) -> Void, replace: @escaping (String) -> Result<String, Error>,
-         onFailure: @escaping (Error, [URL]) -> Void) {
+         onFailure: @escaping (Error, [URL]) -> Void, onFiles: @escaping ([URL]) -> Void) {
         self.onText = onText
         self.replace = replace
         self.onFailure = onFailure
+        self.onFiles = onFiles
     }
 
     @objc func rewriteAsAgentPrompt(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
@@ -38,11 +41,7 @@ final class ServiceProvider: NSObject {
     @objc func explainThisForMe(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         guard !files.isEmpty else { open(pasteboard, as: .explain, error: error); return }
-        do {
-            onText(try explainInput(files: files.map(\.path)), .explain)
-        } catch let failure {
-            onFailure(failure, files)
-        }
+        onFiles(files)
     }
 
     // Replaces the highlighted text. On failure the text stays as it was.

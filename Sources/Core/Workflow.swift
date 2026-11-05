@@ -200,8 +200,8 @@ private func assemble(_ sections: [String: String], source: String) -> String {
     }
     var done = sections["DONE WHEN"] ?? ""
     if done.isEmpty { done = "[CONFIRM: what result shows the task is finished?]" }
-    let constraints = adding(agentConstraints, to: sections["CONSTRAINTS"] ?? "")
-    done = adding([agentDoneRule], to: done)
+    let constraints = adding(agentConstraints, to: withStatedLimits(bulleted(sections["CONSTRAINTS"] ?? ""), source: source))
+    done = adding([agentDoneRule], to: bulleted(done))
 
     func text(context: String) -> String {
         var lines = ["ROLE: \(sections["ROLE"] ?? "Autonomous AI agent working on this task.")",
@@ -220,9 +220,81 @@ private func assemble(_ sections: [String: String], source: String) -> String {
 // A first draft as a workflow: the model's own steps, plus every section, a work loop and the facts
 // it dropped. Text with no sections at all (a refusal) isn't reshaped, so the user can see it.
 func hardenAgentPrompt(_ text: String, source: String) -> String {
-    let sections = agentSections(in: text)
+    var sections = agentSections(in: text)
     guard sections["STEPS"] != nil || sections["OBJECTIVE"] != nil else { return text }
+    if let constraints = sections["CONSTRAINTS"] { sections["CONSTRAINTS"] = withoutInventedLimits(constraints, source: source) }
     return assemble(sections, source: source)
+}
+
+// MARK: Limits
+
+// One "- " line per item, however the model wrote the list: it often puts the first item next to
+// the heading with no bullet, or numbers them.
+// Two limits in one line ("Do not modify the schema. Do not touch anything else.") become two lines.
+private func bulleted(_ body: String) -> String {
+    body.replacingOccurrences(of: "(?<=[.!?])[ \\t]+(?=\(negation)\\b)", with: "\n", options: [.regularExpression, .caseInsensitive])
+        .components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { line in
+        "- " + line.replacingOccurrences(of: "^(?:[-*•]|\\d+[.)])\\s*", with: "", options: .regularExpression)
+    }.joined(separator: "\n")
+}
+
+// Words that say nothing about what a limit is about, so two limits sharing only these aren't the same limit.
+private let limitStopWords: Set<String> = [
+    "a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "from", "by", "or", "and", "any", "all", "other", "existing",
+    "it", "its", "this", "that", "these", "those", "be", "is", "are", "was", "before", "after", "without", "only", "just", "yet",
+    "do", "don", "dont", "t", "not", "never", "must", "mustn", "avoid", "no", "please", "also",
+    "touch", "change", "changes", "modify", "edit", "alter", "use", "add", "remove", "make", "break", "create", "update",
+]
+
+private func limitWords(_ text: String) -> Set<String> {
+    Set(text.lowercased().split { !$0.isLetter && !$0.isNumber }.map { word -> String in
+        word.count > 3 && word.hasSuffix("s") ? String(word.dropLast()) : String(word)
+    }.filter { !limitStopWords.contains($0) })
+}
+
+private let negation = "(?:don['’]?t|do not|never|must not|mustn['’]?t|avoid)"
+private let limitRegex = try! NSRegularExpression(pattern:
+    "(?im)(?:^|[.,;:!?(]\\s*|\\b(?:and|but|also|please|pls|just|so)\\s+)(\(negation)\\b(?!\\s+mind\\b)[^.,;!?\\n]*)")
+
+// The limits the user stated, as clauses that start a sentence or follow a comma: "dont touch the db
+// schema". A "never" inside a description ("the cache never expires") isn't one.
+func statedLimits(in source: String) -> [String] {
+    let ns = source as NSString
+    return limitRegex.matches(in: source, range: NSRange(location: 0, length: ns.length)).compactMap { match in
+        var clause = ns.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces)
+        guard clause.split(separator: " ").count >= 2 else { return nil }
+        clause = clause.replacingOccurrences(of: "^don['’]?t\\b", with: "Don't", options: [.regularExpression, .caseInsensitive])
+        return clause.prefix(1).uppercased() + clause.dropFirst()
+    }
+}
+
+private func isStandardConstraint(_ line: String) -> Bool {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    return agentConstraints.contains { trimmed.hasSuffix($0) } || blueprintLines.contains(trimmed)
+}
+
+// Each stated limit the constraints don't already cover, by what it's about, added in the user's words.
+private func withStatedLimits(_ body: String, source: String) -> String {
+    let own = body.components(separatedBy: "\n").filter { !isStandardConstraint($0) }.joined(separator: "\n")
+    let covered = limitWords(own)
+    let missing = statedLimits(in: source).filter { limit in
+        let words = limitWords(limit)
+        return words.isEmpty ? !own.lowercased().contains(limit.lowercased()) : covered.isDisjoint(with: words)
+    }
+    return ([body].filter { !$0.isEmpty } + missing.map { "- \($0) (from the request)." }).joined(separator: "\n")
+}
+
+// A "do not" line about nothing the user mentioned is a limit the model made up, and small models
+// make up ones that block the work ("Do not modify any existing code" on a migration). It goes;
+// the original request is still there under CONTEXT.
+private func withoutInventedLimits(_ body: String, source: String) -> String {
+    let known = limitWords(source)
+    return bulleted(body).components(separatedBy: "\n").filter { line in
+        let plain = line.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "^(?:[-*•]|\\d+[.)])\\s*", with: "", options: .regularExpression)
+        guard !isStandardConstraint(line), plain.range(of: "^\(negation)\\b", options: [.regularExpression, .caseInsensitive]) != nil else { return true }
+        let words = limitWords(plain)
+        return words.isEmpty || !words.isDisjoint(with: known)
+    }.joined(separator: "\n")
 }
 
 // MARK: Applying a pattern
@@ -253,6 +325,9 @@ private func phaseDetails(_ phase: WorkflowPhase, pattern: AgenticPattern, all: 
         .filter { !$0.isEmpty && $0.range(of: "(?i)^[*_-]*\\s*gate\\b", options: .regularExpression) == nil }
     let reference = pattern.solution.lowercased()
     let job = Set(detailWords(phase.action))
+    // A gate that expects failure (RED: "They fail") can't have details that expect success.
+    let gate = phase.gate.lowercased()
+    let expectsFailure = gate.contains("fail") && !gate.contains("pass")
     var restated: String?
     var added: [String] = []
     for sentence in sentences(in: lines.joined(separator: " ")) {
@@ -261,6 +336,7 @@ private func phaseDetails(_ phase: WorkflowPhase, pattern: AgenticPattern, all: 
         let new = words.filter { !job.contains($0) }
         // Fewer than two new words is an echo. Most of the job's words, plus new ones, is the job with this task's details in it.
         guard new.count >= 2, !plain.contains("<"), !reference.contains(plain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ". "))) else { continue }
+        if expectsFailure, plain.range(of: "(?i)\\b(?:pass(?:es|ed)?|works?|working|succeed(?:s|ed)?|no longer|is fixed|resolved)\\b", options: .regularExpression) != nil { continue }
         if restated == nil, Double(Set(words).intersection(job).count) >= Double(job.count) * 0.6 {
             restated = plain
         } else {
@@ -336,16 +412,32 @@ func applyWorkflow(_ pattern: AgenticPattern, reply: String, prompt: String, sou
     return (assemble(sections, source: source), filled, blueprint.phases.count)
 }
 
-// What a run's reply becomes. The agent prompt becomes a workflow; the other styles, and a user's
-// own instructions (which may ask for another format), stay as the model wrote them.
+// What a run's reply becomes. The agent prompt becomes a workflow and a commit message gets its
+// shape fixed; with the built-in instructions, a file or folder the text never named gets a
+// question. A user's own instructions (which may ask for another format) are left as the model
+// wrote them. Lines the model copied from `instructions` go either way. `context` is other text the
+// user chose (Add Project), whose names aren't made up.
 func finishedPrompt(_ output: String, style: Style, source: String, builtInInstructions: Bool,
-                    pattern: AgenticPattern? = nil, before: String? = nil) -> (text: String, notice: String?) {
-    guard style == .agentPrompt else { return (output, nil) }
-    if let pattern, let before {
-        let result = applyWorkflow(pattern, reply: output, prompt: before, source: source)
-        let notice = result.filled < result.phases
-            ? "The model added details to \(result.filled) of \(result.phases) phases; the others use the pattern's own wording." : nil
-        return (result.text, notice)
+                    pattern: AgenticPattern? = nil, before: String? = nil, instructions: String = "",
+                    context: String = "") -> (text: String, notice: String?) {
+    let output = instructions.isEmpty ? output : removingEchoedInstructions(output, instructions: instructions, input: source + "\n" + context)
+    guard style.isRewrite, builtInInstructions || pattern != nil else { return (output, nil) }
+    var text = output, notice: String?
+    switch style {
+    case .agentPrompt:
+        if let pattern, let before {
+            let result = applyWorkflow(pattern, reply: output, prompt: before, source: source)
+            text = result.text
+            if result.filled < result.phases {
+                notice = "The model added details to \(result.filled) of \(result.phases) phases; the others use the pattern's own wording."
+            }
+        } else {
+            text = hardenAgentPrompt(output, source: source)
+        }
+    case .commitMessage:
+        text = finishedCommitMessage(output, source: source)
+    default:
+        break
     }
-    return (builtInInstructions ? hardenAgentPrompt(output, source: source) : output, nil)
+    return (questioningInventedNames(text, source: source + "\n" + context), notice)
 }

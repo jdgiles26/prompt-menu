@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Every built-in prompt checked against a real model, and repaired in code where it fell short.** Agent prompts keep every limit you stated and drop limits the model made up; CONSTRAINTS and DONE WHEN are proper bullet lists. Files, folders and numbers your text never gave get a `[CONFIRM: …]` instead of passing as facts. Commit messages lose "Subject:", "Body:" and "Fix:" labels and get their "Verified:" line from your notes. A RED phase can no longer say its tests pass. Code Review asks for specific checks, and Explain for real edge cases rather than generic advice.
+- **An edit asked for in the chat becomes a new version**, whole, even when the model returns only the changed section.
+- **Images are explained by their text**, read on this Mac, plus their size in pixels.
+- Explain reads Finder items off the main thread behind a "Reading …" window, and gives up with a message after 45 s instead of freezing.
+- A model that runs out of memory says so, instead of only "exit code 1".
+- The bug report's check looks for its SCOPE section too.
 - **Explain This for Me works on any file and any folder.** It's offered on everything in Finder, including folders, files with no extension and `.db` files. Folders are described by their layout, totals and telling files such as the README. SQLite databases, found by their contents, by their tables, columns, row counts and a few sample rows. PDFs, RTF and Word files by their text, binary plists decoded, archives by what's inside, and any other file by its type, details and readable fragments. It only reads, puts time limits on folders, databases and system tools, and leaves databases untouched. From a folder it never reads secret-looking files or private keys, and secret-looking database columns are hidden. Several selected items now share the size limit.
 - The window for a blocked item now says **Choose…** and accepts folders too.
 - The README, ARCHITECTURE and FLOW_MAPS now explain what the app does, how it works, its benefits and assets, and its privacy promises and limits, with new diagrams for the whole app, each kind of Finder item and where data goes.

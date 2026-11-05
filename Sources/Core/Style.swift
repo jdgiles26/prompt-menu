@@ -33,7 +33,7 @@ enum Style: String, CaseIterable {
     var sections: [String] {
         switch self {
         case .agentPrompt: return ["ROLE", "OBJECTIVE", "CONTEXT", "STEPS", "CONSTRAINTS", "DONE WHEN"]
-        case .bugReport: return ["TITLE", "SUMMARY", "STEPS TO REPRODUCE", "EXPECTED", "ACTUAL", "ENVIRONMENT"]
+        case .bugReport: return ["TITLE", "SUMMARY", "STEPS TO REPRODUCE", "EXPECTED", "ACTUAL", "ENVIRONMENT", "SCOPE"]
         case .codeReview: return ["CHANGE", "CONTEXT", "REVIEW FOCUS", "OUT OF SCOPE", "TESTING", "DONE WHEN"]
         case .commitMessage: return []
         case .explain: return ["TL;DR", "WHAT IT IS", "HOW IT WORKS", "KEY PARTS", "WATCH OUT FOR", "NEXT STEPS"]
@@ -99,7 +99,7 @@ Use these sections, in this order:
 
 CHANGE: what changed and why, in two or three sentences.
 CONTEXT: files, modules, tickets and links named in the text.
-REVIEW FOCUS: a numbered list of what to check, riskiest first: correctness, security, data loss, concurrency, edge cases, compatibility.
+REVIEW FOCUS: a numbered list of specific things in this change to check, riskiest first, each naming the code or behavior to look at. Think about correctness, security, data loss, concurrency, edge cases and compatibility, but don't list those words on their own.
 OUT OF SCOPE: what not to flag, such as style or code the change didn't touch.
 TESTING: what was tested and how, and what wasn't.
 DONE WHEN: what an approval needs.
@@ -114,8 +114,18 @@ Format:
 - A subject line in the imperative mood ("Fix", "Add", "Remove"), at most 72 characters, with no period at the end.
 - A blank line.
 - A body wrapped at 72 characters that says what was wrong or missing, why this change fixes it, and anything the reader should know. Leave the body out if the subject says everything.
-- If the text mentions tests or checks that were run, end with a line starting "Verified:".
-- Where the reason for the change is missing, write [CONFIRM: why] instead of guessing.
+- If the text mentions tests or checks that were run, end with a line starting "Verified:" that says which and how they went.
+- The reason is often in the text already ("because…", "so that…", "it broke…"). Only when there's none, write [CONFIRM: why was this needed?] instead of guessing.
+- No labels such as "Subject:" or "Body:", and no "Fix:" in front of the subject.
+
+Example, for "fixed logout bug, session ttl was in seconds not minutes in auth/session.py, tests pass":
+
+Fix the session TTL unit in auth/session.py
+
+The TTL was read as seconds instead of minutes, so users were logged
+out almost at once.
+
+Verified: tests pass
 
 \(rules)
 """
@@ -131,13 +141,14 @@ What goes in each (don't copy these descriptions into your answer):
 - WHAT IT IS is the big picture in two or three short sentences, with one plain-language analogy.
 - HOW IT WORKS is a numbered walk-through from start to finish. For code, go top to bottom: what each function, type or block does, what goes in, what comes out, and what it changes.
 - KEY PARTS lists the important names, terms, settings and values, one per line as "- **name**: what it does and why it matters".
-- WATCH OUT FOR lists gotchas, edge cases, errors and risks, each with why.
+- WATCH OUT FOR lists the real gotchas, edge cases, errors and risks in this text, each with why. For code, work out what happens with empty, zero or missing input, on the last pass of a loop, and wherever it can crash (a force unwrap `!`, an index out of range, a division by zero).
 - NEXT STEPS gives two to four concrete things to do or check next.
 
 Rules:
 - Keep each bullet or step to one to three short sentences. Use lists, not long paragraphs.
 - Put **bold** on each key term the first time it appears, and define jargon right where it's used.
 - Quote names, values and error messages exactly as they appear in the text.
+- No generic advice (add logging, add error handling, add tests) unless the text shows that gap.
 - Explain only what the text shows. Never invent behavior. Where you have to guess, add "(probably)" and say what would confirm it.
 - The text may describe a folder (its layout and some of its files), a database (its tables, columns and sample rows) or a file that isn't text (its type and readable fragments), instead of showing everything. Then work out what it's for and how its parts fit together from those names and details, say HOW IT WORKS in terms of those parts, and put what you couldn't see under WATCH OUT FOR.
 - Reply with only the explanation: no preamble, no closing remarks.

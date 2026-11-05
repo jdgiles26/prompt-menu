@@ -8,6 +8,9 @@ import Foundation
 struct ChatTurn: Equatable {
     var question: String
     var answer: String
+
+    // How a turn reads, in the dialog and in what the model is sent.
+    var text: String { "You: \(question)\nAssistant: \(answer)" }
 }
 
 // More than a rewrite's input, since it carries the result and the turns too, but still within
@@ -34,6 +37,7 @@ func chatSystemPrompt(style: Style) -> String {
     - Answer every question. Put the answer itself in the first sentence. Never refuse, skip or change the subject, and never say you can't answer.
     - Answer only what was asked: don't repeat or redo the result unless the user asks for that.
     - Use the text and the result first, and quote names and values from them exactly.
+    - For a question about what code does in some case, follow the code line by line for that case before you answer, and quote the line that decides it.
     - If they don't cover the question, answer it anyway from your general knowledge, as any assistant would.
     - If you're unsure, give your best answer first, then one short line on what you're unsure of.
     - Off-topic questions get a real answer too.
@@ -48,7 +52,7 @@ func chatContext(source: String, result: String, history: [ChatTurn]) -> String 
     // Newest first, until turnsRoom is used; the newest is cut to fit rather than dropped.
     var turns: [String] = [], room = turnsRoom
     for turn in history.reversed() {
-        let text = "You: \(turn.question)\nAssistant: \(turn.answer)"
+        let text = turn.text
         guard text.count <= room else {
             if turns.isEmpty { turns.append(String(text.prefix(room))) }
             break
@@ -112,4 +116,43 @@ func answerFollowUp(_ question: String, style: Style, source: String, result: St
     """
     return try rewrite(question, config: alone, warm: warm, searchDirs: searchDirs, timeout: timeout,
                        started: started, progress: progress, notice: notice)
+}
+
+// A follow-up answer that edits the result, as the whole result to keep as a new version, or nil if
+// it isn't an edit. Small models asked to change one line return only that section, so each section
+// in the answer replaces the same section of the result, and the rest stays. Text before the first
+// heading ("Here's the updated section:") is dropped. Only for styles with sections.
+func chatEdit(_ answer: String, of result: String, style: Style) -> String? {
+    guard style.isRewrite, !style.sections.isEmpty else { return nil }
+    let names = style == .agentPrompt ? style.sections + ["WORKFLOW PATTERN"] : style.sections
+    let new = sectionParts(answer, names: names), old = sectionParts(result, names: names)
+    guard !new.parts.isEmpty else { return nil }
+    var merged: String
+    if Set(new.parts.map(\.name)).isSuperset(of: style.sections) {
+        merged = new.parts.map(\.text).joined(separator: "\n")
+    } else {
+        let replacement = Dictionary(new.parts.map { ($0.name, $0.text) }, uniquingKeysWith: { first, _ in first })
+        let kept = old.parts.map { replacement[$0.name] ?? $0.text }
+        let added = new.parts.filter { part in !old.parts.contains { $0.name == part.name } }.map(\.text)
+        merged = ([old.prefix].filter { !$0.isEmpty } + kept + added).joined(separator: "\n")
+    }
+    merged = merged.trimmingCharacters(in: .whitespacesAndNewlines)
+    return merged == result.trimmingCharacters(in: .whitespacesAndNewlines) ? nil : merged
+}
+
+// The text before the first heading, then each section from its heading to the next, trimmed.
+private func sectionParts(_ text: String, names: [String]) -> (prefix: String, parts: [(name: String, text: String)]) {
+    let alternatives = names.map { NSRegularExpression.escapedPattern(for: $0).replacingOccurrences(of: " ", with: "[ \\t]+") }
+    let regex = try! NSRegularExpression(pattern: "(?im)^[ \\t#>*_-]*(\(alternatives.joined(separator: "|")))[ \\t*_]*:")
+    let ns = text as NSString
+    let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    guard let first = matches.first else { return (text.trimmingCharacters(in: .whitespacesAndNewlines), []) }
+    let prefix = ns.substring(to: first.range.location).trimmingCharacters(in: .whitespacesAndNewlines)
+    let parts = matches.enumerated().map { i, match -> (name: String, text: String) in
+        let end = i + 1 < matches.count ? matches[i + 1].range.location : ns.length
+        let name = ns.substring(with: match.range(at: 1)).uppercased().replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        let body = ns.substring(with: NSRange(location: match.range.location, length: end - match.range.location))
+        return (name, body.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+    return (prefix, parts)
 }

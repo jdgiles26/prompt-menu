@@ -7,12 +7,13 @@ final class FailurePanelController: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
     private let chooseButton = NSButton(title: "Choose…", target: nil, action: nil)
     private let files: [URL]
-    private let explain: ([URL]) throws -> Void
+    private let explain: ([URL], @escaping (Error?) -> Void) -> Void
     private var openPanel: NSOpenPanel?
     var onClose: (() -> Void)?
 
-    // `explain` opens the dialog for the files the user chose, or throws if they still can't be read.
-    init(error: Error, files: [URL], explain: @escaping ([URL]) throws -> Void) {
+    // `explain` reads the chosen items and opens the result, then calls back with nil, or with the
+    // error if it failed, on the main thread.
+    init(error: Error, files: [URL], explain: @escaping ([URL], @escaping (Error?) -> Void) -> Void) {
         self.files = files
         self.explain = explain
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 170),
@@ -71,13 +72,14 @@ final class FailurePanelController: NSWindowController, NSWindowDelegate {
             guard let self else { return }
             self.openPanel = nil
             guard response == .OK else { return }
-            do {
-                try self.explain(open.urls)
-                self.window?.close()
-            } catch RewriteError.protectedFile(let name) {
-                self.show(protectedFileHelp(name))
-            } catch {
-                self.show(error.localizedDescription)
+            self.chooseButton.isEnabled = false
+            self.explain(open.urls) { error in
+                self.chooseButton.isEnabled = true
+                switch error {
+                case nil: self.window?.close()
+                case RewriteError.protectedFile(let name)?: self.show(protectedFileHelp(name))
+                case let error?: self.show(error.localizedDescription)
+                }
             }
         }
     }

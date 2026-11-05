@@ -112,6 +112,10 @@ func testServiceFailuresReachTheUser() throws {
     let source = try String(contentsOfFile: "Sources/PromptMenu/Service.swift", encoding: .utf8)
     check(source.contains("onFailure"), "Service.swift should hand failures to the app to show")
     let explain = source.components(separatedBy: "func explainThisForMe").last?.components(separatedBy: "@objc").first ?? ""
-    check(explain.contains("onFailure"), "explainThisForMe must show its failures")
+    // Finder items are read off the main thread (onFiles), so their failures are shown by the app's explain(_:).
+    check(explain.contains("onFiles"), "explainThisForMe must hand Finder items to the app")
+    let app = try String(contentsOfFile: "Sources/PromptMenu/main.swift", encoding: .utf8)
+    let reader = app.components(separatedBy: "private func explain(").dropFirst().first?.components(separatedBy: "// MARK:").first ?? ""
+    check(reader.contains("showFailure"), "explain(_:) must show its failures")
     check(!explain.contains("error.pointee"), "explainThisForMe's failures must not end at the error string")
 }

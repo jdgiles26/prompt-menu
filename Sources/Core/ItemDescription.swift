@@ -1,6 +1,7 @@
 import AppKit
 import PDFKit
 import SQLite3
+import Vision
 
 // Turns anything chosen in Finder into text a small model can explain. Text is sent as it is; a folder,
 // database or binary file has no useful text of its own, so it's described: layout, tables, or type
@@ -95,7 +96,26 @@ private func describeFile(_ path: String, name: String, info: stat, limit: Int) 
         guard !body.isEmpty else { throw RewriteError.emptyFile(name) }
         return finished(body)
     }
+    if let image = imageDescription(path, info: info) { return finished(image) }
     return finished(fileProfile(path, handle: handle, head: head, info: info, limit: limit))
+}
+
+// An image's size and the text in it, recognized on this Mac by Vision (no network). The text model
+// can't see pictures, so this is what it gets: enough for a screenshot of an error or a scanned page.
+private func imageDescription(_ path: String, info: stat) -> String? {
+    guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil), CGImageSourceGetCount(source) > 0,
+          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+    let type = toolOutput("/usr/bin/file", ["--brief", path], maxBytes: 1000)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    var lines = ["This is an image. Only its text could be read; what it otherwise shows can't be seen."]
+    lines.append("Type: \(type?.isEmpty == false ? type! : "image")")
+    lines.append("Size: \(image.width) × \(image.height) pixels, \(sizeText(Int64(info.st_size)))")
+    lines.append("Modified: \(dateText(info.st_mtimespec.tv_sec))")
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    try? VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+    let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    lines.append(text.isEmpty ? "No text was found in it." : "\nText in it, top to bottom:\n" + text.joined(separator: "\n"))
+    return lines.joined(separator: "\n")
 }
 
 // Text in any encoding worth trying, or nil if this isn't text.

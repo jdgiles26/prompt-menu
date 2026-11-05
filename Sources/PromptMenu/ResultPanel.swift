@@ -61,7 +61,9 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private let transcript = NSTextView()
     private let questionField = NSTextField()
     private let askButton = NSButton(title: "Ask", target: nil, action: nil)
-    private var chatTurns: [ChatTurn] = []
+    // The answered turns' text is kept, not rebuilt on every streamed chunk.
+    private var chatTurns: [ChatTurn] = [] { didSet { answeredTranscript = chatTurns.map(\.text).joined(separator: "\n\n") } }
+    private var answeredTranscript = ""
     private var showingFailure = false  // The text view shows an error, not a result.
     private var resultAboveButtons: NSLayoutConstraint!
     private var resultAboveChat: NSLayoutConstraint!
@@ -179,7 +181,9 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             closeButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
             projectButton.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             projectButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
-            spinner.leadingAnchor.constraint(equalTo: projectButton.trailingAnchor, constant: 8),
+            // Explain hides Add Project, so there the spinner starts at the edge instead of after a gap.
+            style.isRewrite ? spinner.leadingAnchor.constraint(equalTo: projectButton.trailingAnchor, constant: 8)
+                            : spinner.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             spinner.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
             status.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: 8),
             status.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -12),
@@ -289,10 +293,16 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                 DispatchQueue.main.async { if mine == self.generation { self.notice = message } }
             })
                 let finished: (text: String, notice: String?)
-                if case .pattern(let pattern, let before) = operation {
-                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: true, pattern: pattern, before: before)
-                } else {
-                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: config.systemPrompt == agentSystemPrompt)
+                switch operation {
+                case .pattern(let pattern, let before):
+                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: true, pattern: pattern,
+                                              before: before, instructions: config.systemPrompt)
+                case .project(_, let context):
+                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: config.systemPrompt == self.style.builtInPrompt,
+                                              instructions: config.systemPrompt, context: context)
+                case .draft, .polish:
+                    finished = finishedPrompt(output, style: self.style, source: self.source, builtInInstructions: config.systemPrompt == self.style.builtInPrompt,
+                                              instructions: config.systemPrompt)
                 }
                 if let notice = finished.notice {
                     DispatchQueue.main.async { if mine == self.generation { self.notice = notice } }
@@ -699,7 +709,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         notice = nil
         setRunning(true, status: runningStatus + "…")
         startClock()
-        showTranscript(adding: "You: \(question)\nAssistant: …")
+        showTranscript(adding: ChatTurn(question: question, answer: "…").text)
         let warm = warmRunner(config)
         // The result as it is now, edits included; after a failure the text view shows the error,
         // so ask about the selected version, or the last one that worked. The failure stays shown.
@@ -723,7 +733,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                                                      config: config, warm: warm, started: { stopper.running($0) }, progress: { soFar in
                 DispatchQueue.main.async {
                     guard mine == self.generation, self.isRunning else { return }
-                    self.showTranscript(adding: "You: \(question)\nAssistant: \(soFar)")
+                    self.showTranscript(adding: ChatTurn(question: question, answer: soFar).text)
                 }
             }, notice: { message in
                 DispatchQueue.main.async { if mine == self.generation { self.notice = message } }
@@ -737,7 +747,16 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
                     self.chatTurns.append(ChatTurn(question: question, answer: answer))
                     self.questionField.stringValue = ""
                     self.showTranscript()
-                    self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.", failed: failedShown)
+                    // An answer that changes the result becomes a version, whole, so nothing is copied by hand.
+                    if !failedShown, let edited = chatEdit(answer, of: shown, style: self.style) {
+                        self.saveEdits(selectingAfter: false)
+                        self.versions.append(Version(text: edited, label: "\(self.versions.count + 1) · From the chat"))
+                        self.showVersion(self.versions.count - 1)
+                        self.updateCheck()
+                        self.setRunning(false, status: "Answered in \(seconds)s. The change is version \(self.versions.count); earlier versions are in the menu.")
+                    } else {
+                        self.setRunning(false, status: self.notice ?? "Answered in \(seconds)s.", failed: failedShown)
+                    }
                 case .failure(let error):
                     // The question stays in the field, to ask again.
                     self.showTranscript(adding: "You: \(question)\n\(error.localizedDescription)")
@@ -750,8 +769,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
 
     // The answered turns, then `pending` (a question being answered, or one that failed).
     private func showTranscript(adding pending: String? = nil) {
-        let turns = chatTurns.map { "You: \($0.question)\nAssistant: \($0.answer)" }
-        transcript.string = (turns + [pending].compactMap { $0 }).joined(separator: "\n\n")
+        transcript.string = ([answeredTranscript, pending ?? ""].filter { !$0.isEmpty }).joined(separator: "\n\n")
         transcript.scrollToEndOfDocument(nil)
     }
 

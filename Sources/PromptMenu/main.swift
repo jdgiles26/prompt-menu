@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panels: [ResultPanelController] = []
     private var handledService = false
     private var replacing = false
+    private var reading = 0  // Finder items being read for Explain; the app mustn't quit meanwhile.
     private var failurePanels: [FailurePanelController] = []
     private var warm: WarmRunner?
     private var statusItem: NSStatusItem?
@@ -19,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         },
         onFailure: { [weak self] error, files in
             self?.showFailure(error, files: files)
+        },
+        onFiles: { [weak self] files in
+            self?.explain(files)
         })
 
     // Before the Services request arrives: the result panel's text view needs the Edit menu for ⌘C, ⌘V, ⌘A, ⌘Z.
@@ -86,12 +90,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             let outcome = Result {
                 finishedPrompt(try rewrite(text, config: config, warm: warm, timeout: inPlaceTimeout), style: .agentPrompt, source: text,
-                               builtInInstructions: config.systemPrompt == agentSystemPrompt).text
+                               builtInInstructions: config.systemPrompt == agentSystemPrompt, instructions: config.systemPrompt).text
             }
             DispatchQueue.main.async { result = outcome }
         }
         while result == nil { RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05)) }
         return result!
+    }
+
+    // Explain on items from Finder. Reading a folder, a database or a PDF can take a while, and a
+    // broken disk can hang, so it happens off the main thread with a time limit, behind a small
+    // window that says what's being read. With `done`, a failure goes to it instead of a new window.
+    private func explain(_ files: [URL], done: ((Error?) -> Void)? = nil) {
+        handledService = true
+        reading += 1
+        let name = files.count == 1 ? files[0].lastPathComponent : "\(files.count) items"
+        let progress = ProgressWindow(text: "Reading \(name)…")
+        readItems(files.map(\.path)) { result in
+            DispatchQueue.main.async {
+                progress.close()
+                self.reading -= 1
+                switch result {
+                case .success(let text):
+                    self.showRewrite(of: text, style: .explain)
+                    done?(nil)
+                case .failure(let error):
+                    if let done { done(error) } else { self.showFailure(error, files: files) }
+                }
+            }
+        }
     }
 
     // MARK: When a request fails
@@ -100,9 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // would quit the app before this window existed.
     private func showFailure(_ error: Error, files: [URL]) {
         handledService = true
-        let panel = FailurePanelController(error: error, files: files) { [weak self] chosen in
-            let text = try explainInput(files: chosen.map(\.path))
-            self?.showRewrite(of: text, style: .explain)
+        let panel = FailurePanelController(error: error, files: files) { [weak self] chosen, done in
+            self?.explain(chosen, done: done)
         }
         panel.onClose = { [weak self, weak panel] in
             self?.failurePanels.removeAll { $0 === panel }
@@ -219,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // Quit once nothing is on screen and no model is kept loaded, so no memory is left behind.
     private func finish() {
         DispatchQueue.main.async {
-            if self.settingsWindow == nil && self.panels.isEmpty && !self.replacing && self.failurePanels.isEmpty && self.warm?.isLoaded != true {
+            if self.settingsWindow == nil && self.panels.isEmpty && !self.replacing && self.reading == 0 && self.failurePanels.isEmpty && self.warm?.isLoaded != true {
                 NSApp.terminate(nil)
             }
         }

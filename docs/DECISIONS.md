@@ -53,3 +53,29 @@
 - **Chosen:** `public.item`, `public.data`, `public.content`, `public.folder` and `public.directory` in `NSSendFileTypes`, and `ItemDescription.swift`, which decides what an item is from its contents: folder layout and telling files, SQLite schema and samples (`immutable=1`, so nothing is written or locked), document text, decoded plist, archive listing, or a profile of type, details and fragments. Replaces the "text files only" entry above, at the user's request ("folders, non file extension saved files, .db files and any file and any folder").
 - **Alternatives:** per-type declarations, which can't match a file with no extension; refusing after the click, which is what made `public.data` unwanted before; shelling out to `sqlite3`, when the system library can guarantee read-only and a time limit; OCR for images, left out for now because `file` gives the type and size, and it would be a new framework and a slower path.
 - **Why:** a small text model can't use raw bytes, but can explain structure and names well. The checks are time and size limits rather than file-type rules, because these run while Finder waits. Files read automatically from a folder skip secret-looking names and private-key contents, and secret-looking database columns are hidden: the user chose the folder, not each file in it. A file chosen directly is read as chosen. The cost: the item is now on every Finder right-click, including PDFs and images, which reverses the earlier preference.
+
+## 2026-11-05: Code repairs what a 3B model gets wrong in every built-in prompt
+
+- **Chosen:** every built-in prompt was run on Qwen 2.5 3B (llama.cpp) and its replies read against what each item is for. What the model got wrong repeatably is repaired in code (`Finishing.swift`, `Workflow.swift`): limits the user stated ("dont touch the db schema") are added to CONSTRAINTS in the user's words; a "do not" line about nothing the user mentioned ("Do not modify any existing code") is dropped; CONSTRAINTS and DONE WHEN are one bullet per item; files, folders and numbers of two digits or more that the text never gave (`test/auth`, `charge_test.go`, "1800") get a `[CONFIRM: …]`; a RED phase's details can't expect success; a commit message loses "Subject:"/"Body:" labels and "Fix:", gets brackets on a bare CONFIRM, and a "Verified:" line from the notes; lines copied from the instructions go. The Commit Message prompt has an example, Code Review asks for specific checks, and Explain asks for real edge cases instead of generic advice.
+- **Alternatives:** prompt wording only; a bigger default model; leaving the checker to flag problems.
+- **Why:** wording alone was tried first. The commit message kept its labels until the example, and numbers were still invented with it. Code makes each repair certain and testable, and keeps the first draft as fast as it was. A bigger model doesn't fit 8 GB Macs. Measured after: Commit Message 3 of 3 runs right with check 100; Code Review lists specific checks and questions the test file it made up.
+- **Not fixed, and why:** Qwen 2.5 3B still answers "what happens if `times` is 0?" wrongly (the force unwrap crashes) and Explain misses that crash, even with the new rules. That's the model's reasoning, not the prompt's shape; a larger model from the Model menu does better.
+
+## 2026-11-05: The pattern suggestion stays MLX-only
+
+- **Chosen:** the ★ suggestion still runs only with a kept-loaded MLX model; on llama.cpp the keyword and task-type order stands.
+- **Alternatives:** a one-shot model run while the pattern list is open.
+- **Why:** measured twice on this note ("fix the 500 on /signin, need a regression test"), Qwen 2.5 3B answered "C", Workflow Evals with Mocked Tools, over the shortlist's first pick, Spec-As-Test. A slower, worse pick isn't worth a second model in memory beside the one about to run.
+
+## 2026-11-05: Reading Finder items happens off the main thread, with an overall limit
+
+- **Chosen:** `readItems` reads on a background queue behind a small "Reading …" window, and gives up after 45 s with a message (`slowRead`). The app doesn't quit while it reads.
+- **Alternatives:** time limits inside PDFKit and every read (PDFKit has none to set).
+- **Why:** a hung read can't be cancelled, but it no longer freezes the app; its late result is ignored.
+
+## 2026-11-05: Images are explained by their text, read on the Mac
+
+- **Chosen:** Vision's text recognition (`VNRecognizeTextRequest`), which runs on the device, plus the image's size in pixels.
+- **Alternatives:** type and size only (before); a vision model.
+- **Why:** the text model can't see pictures, and a screenshot's text (an error, a scanned page) is what most people want explained. Vision needs no permission or entitlement and no network.
+
