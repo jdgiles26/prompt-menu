@@ -46,6 +46,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private var reviewLog = ""
     private let copyButton = NSButton(title: "Copy", target: nil, action: nil)
     private let againButton = NSButton(title: "Try Again", target: nil, action: nil)
+    private let sendButton = NSButton(title: "Send To…", target: nil, action: nil)
     private var versions: [Version] = []
     private var lastOperation = Operation.draft
     private var stopRunning: (() -> Void)?
@@ -140,6 +141,10 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         againButton.target = self
         againButton.action = #selector(tryAgain(_:))
         copyButton.target = self
+        sendButton.target = self
+        sendButton.action = #selector(showSendMenu(_:))
+        sendButton.toolTip = "Start a coding agent's CLI (Claude Code, Codex, Gemini CLI, Aider…) in Terminal with this prompt, in a folder you pick."
+        sendButton.isHidden = !style.isRewrite
         copyButton.action = #selector(copyPrompt(_:))
         copyButton.keyEquivalent = "\r"
         copyButton.keyEquivalentModifierMask = .command // Return alone types a new line.
@@ -149,7 +154,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         projectButton.isHidden = !style.isRewrite
         layoutChat()
 
-        for view in [versionPopup, checkButton, fillButton, projectButton, modelPopup, patternButton, scroll, chatBox, spinner, status, closeButton, againButton, copyButton] as [NSView] {
+        for view in [versionPopup, checkButton, fillButton, projectButton, modelPopup, patternButton, scroll, chatBox, spinner, status, closeButton, againButton, sendButton, copyButton] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
@@ -175,7 +180,10 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
             chatBox.bottomAnchor.constraint(equalTo: copyButton.topAnchor, constant: -12),
             copyButton.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
             copyButton.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
-            againButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
+            sendButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
+            sendButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
+            style.isRewrite ? againButton.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -8)
+                            : againButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
             againButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
             closeButton.trailingAnchor.constraint(equalTo: againButton.leadingAnchor, constant: -8),
             closeButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
@@ -359,6 +367,7 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         let ready = !running && !failed
         textView.isEditable = ready
         copyButton.isEnabled = ready
+        sendButton.isEnabled = ready
         patternButton.isEnabled = ready
         modelPopup.isEnabled = !running
         projectButton.isEnabled = !running
@@ -771,6 +780,102 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
     private func showTranscript(adding pending: String? = nil) {
         transcript.string = ([answeredTranscript, pending ?? ""].filter { !$0.isEmpty }).joined(separator: "\n\n")
         transcript.scrollToEndOfDocument(nil)
+    }
+
+    // MARK: Send to a coding agent
+
+    // One submenu per installed CLI: its recent folders, then Choose Folder…, to open it in
+    // Terminal; then the same for Copy Command.
+    @objc private func showSendMenu(_ sender: NSButton) {
+        let loaded = loadHarnesses()
+        let installed = installedHarnesses(loaded.harnesses)
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        if installed.isEmpty {
+            let none = NSMenuItem(title: "No agent CLI found (\(defaultHarnesses.map(\.name).joined(separator: ", ")))", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        }
+        for (copying, title) in [(false, "Open in %@"), (true, "Copy Command for %@")] where !installed.isEmpty {
+            if copying { menu.addItem(.separator()) }
+            for (harness, path) in installed {
+                let item = NSMenuItem(title: String(format: title, harness.name), action: nil, keyEquivalent: "")
+                let folders = NSMenu()
+                for folder in recentAgentFolders() where FileManager.default.fileExists(atPath: folder) {
+                    folders.addItem(sendItem(title: (folder as NSString).abbreviatingWithTildeInPath, harness: harness, path: path, folder: folder, copying: copying))
+                }
+                if !folders.items.isEmpty { folders.addItem(.separator()) }
+                folders.addItem(sendItem(title: "Choose Folder…", harness: harness, path: path, folder: nil, copying: copying))
+                item.submenu = folders
+                menu.addItem(item)
+            }
+        }
+        if let problem = loaded.problem {
+            menu.addItem(.separator())
+            let note = NSMenuItem(title: problem, action: nil, keyEquivalent: "")
+            note.isEnabled = false
+            menu.addItem(note)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    private struct SendTarget {
+        var harness: Harness
+        var path: String
+        var folder: String?
+        var copying: Bool
+    }
+
+    private func sendItem(title: String, harness: Harness, path: String, folder: String?, copying: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(send(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = SendTarget(harness: harness, path: path, folder: folder, copying: copying)
+        return item
+    }
+
+    @objc private func send(_ sender: NSMenuItem) {
+        guard let target = sender.representedObject as? SendTarget, let window else { return }
+        if let folder = target.folder { send(target, to: folder); return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Send"
+        panel.message = "Choose the folder \(target.harness.name) should work in."
+        if let last = recentAgentFolders().first { panel.directoryURL = URL(fileURLWithPath: last) }
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.send(target, to: url.path)
+        }
+    }
+
+    // Open: the prompt goes on the clipboard and a script that reads it from there opens in
+    // Terminal. The script holds only the folder and the command, and deletes itself.
+    private func send(_ target: SendTarget, to folder: String) {
+        saveEdits(selectingAfter: true)
+        let prompt = textView.string
+        rememberAgentFolder(folder)
+        let place = (folder as NSString).abbreviatingWithTildeInPath
+        NSPasteboard.general.clearContents()
+        if target.copying {
+            NSPasteboard.general.setString(copyCommand(target.harness, folder: folder, prompt: prompt), forType: .string)
+            status.stringValue = "Copied a command that starts \(target.harness.name) in \(place) with this prompt. Paste it into a terminal."
+            return
+        }
+        NSPasteboard.general.setString(prompt, forType: .string)
+        let script = FileManager.default.temporaryDirectory.appendingPathComponent("Prompt Menu – \(target.harness.name) \(UUID().uuidString.prefix(8)).command")
+        do {
+            try terminalScript(target.harness, path: target.path, folder: folder).write(to: script, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+        } catch {
+            status.stringValue = "Couldn't start \(target.harness.name): \(error.localizedDescription)"
+            return
+        }
+        if NSWorkspace.shared.open(script) {
+            status.stringValue = "Started \(target.harness.name) in Terminal, in \(place). The prompt went by the clipboard."
+        } else {
+            try? FileManager.default.removeItem(at: script)
+            status.stringValue = "macOS couldn't open Terminal. Use Copy Command instead."
+        }
     }
 
     // MARK: Buttons

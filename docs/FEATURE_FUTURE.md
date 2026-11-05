@@ -1,6 +1,6 @@
 # Future features
 
-**Status:** §1, §2, §3 and §5 are built (see the CHANGELOG). §4 and §6 are still designs. Each section says what it's for, how it would work inside Prompt Menu's rules (local only, no network code, no permissions, Command Line Tools only), what it would cost on an 8 GB Mac, and what's still open. Build them in the order listed; each one uses the pieces before it.
+**Status:** §1 to §5 are built (see the CHANGELOG). §4 was built with one change: the prompt goes to the CLI by the clipboard rather than a temp file, so it's never written to disk (docs/DECISIONS.md). §6 says per item what was built and what wasn't. Each section says what it's for, how it would work inside Prompt Menu's rules (local only, no network code, no permissions, Command Line Tools only), what it would cost on an 8 GB Mac, and what's still open. Build them in the order listed; each one uses the pieces before it.
 
 The rule for all of them: **highlight → right-click → first draft stays exactly as fast and simple as it is.** Everything here is an optional button in the dialog after the first draft.
 

@@ -7,7 +7,7 @@ Source: the request to fix rewrites failing on a deleted model (offer the models
 - [x] Round 1: model menu, deleted-model recovery, `localModels` discovery (MLX + GGUF, labeled by format)
 - [x] Round 2: §1 Fill Gaps, §2 Compare Models, §5 Add Project
 - [x] Round 3: §3 Review (jury, harden, Review Log), checked end to end with Qwen 2.5 3B and LFM2.5 1.2B through `llama-completion`
-- [ ] Round 4: §4 Send to a coding agent's CLI. **Blocked:** see Open Questions.
+- [x] Round 4: §4 Send to a coding agent's CLI. Built in Phase 6, round 2.
 - [ ] §6 smaller items: not started (keeping llama.cpp loaded needs per-version testing; mlx-swift needs Xcode, which the build rules exclude)
 - [x] Committed (778afdc)
 
@@ -57,7 +57,7 @@ Source: the user's OK to fix the compile error at `ModelsSheet.swift:42`, which 
 Source: "fix all the known issues, bugs and ensure the built in prompts for each step and feature are functioning as i have stated i want them to work". What was stated: Explain in depth, in the easy-to-scan style, on any file or folder, with a chat that answers every follow-up; agentic rewrites that are real workflows; models found on the Mac, not hardcoded; every FEATURE_FUTURE item built.
 
 - [x] Round 1: every built-in prompt run on Qwen 2.5 3B (draft, each style, pattern, suggestion, chat); repairs in code with tests from those replies (stated and invented limits, bullets, invented names and numbers, RED vs gate, commit message shape, echoed instructions, SCOPE); prompt changes for Commit Message, Code Review, Explain and the chat; chat edits become a version; image text via Vision; Finder reading off the main thread with a limit; out-of-memory message; Explain spinner position; chat transcript cached
-- [ ] Round 2: FEATURE_FUTURE §4 Send to a coding agent's CLI
+- [x] Round 2: FEATURE_FUTURE §4 Send To: `Harness.swift` (defaults checked against each CLI's docs, `harnesses.json`, detection, Terminal script, Copy Command, recent folders), the Send To… menu. A generated script opened in Terminal through `NSWorkspace` and deleted itself (checked with `/usr/bin/true` as the CLI)
 - [ ] Round 3: FEATURE_FUTURE §6 items that fit the rules
 - [ ] Round 4: manual checks in the app, docs, push
 
@@ -65,7 +65,7 @@ Source: "fix all the known issues, bugs and ensure the built in prompts for each
 
 - ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.
 
-- §4 writes a prompt file, a `.command` script and `harnesses.json` outside the repo and `local.promptmenu`. AGENTIC_DEVELOPMENT §6 says to ask first, and guardrail 2.1 says user text isn't written to disk. Allowed?
+- ~~§4 writes a prompt file… Allowed?~~ Decided 2026-11-05 when the user asked to finish development: no prompt file. The prompt goes by the clipboard; the `.command` script holds only the folder and command and deletes itself; `harnesses.json` is read, never written.
 - ~~Model folders~~ Decided 2026-10-26: added to the user's own settings (`modelFolders`), not as code defaults. The app was set to MLX Gemma 12B, which doesn't fit in 8 GB and was the cause of failed rewrites; it now uses llama.cpp + `~/.kimi_openclaw/models/qwen2.5-3b-instruct-q4_k_m.gguf` (rewrite done in 8 s, check 81). Both Gemma 12B copies were deleted at the user's request.
 
 ## Found Along the Way

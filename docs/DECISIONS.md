@@ -79,3 +79,9 @@
 - **Alternatives:** type and size only (before); a vision model.
 - **Why:** the text model can't see pictures, and a screenshot's text (an error, a scanned page) is what most people want explained. Vision needs no permission or entitlement and no network.
 
+## 2026-11-05: Send To hands the prompt over by the clipboard, not a file
+
+- **Chosen:** **Open in …** puts the prompt on the clipboard and opens a `.command` script in Terminal that holds only `cd` to the folder and the CLI's command, with `"$(pbpaste)"` as the prompt argument, and deletes itself first thing. **Copy Command** single-quotes the prompt as one word. CLIs are data (`Harness`: program, arguments, one `{prompt}`); four defaults, each checked against that CLI's docs on this date (`claude [prompt]` from `claude --help` 2.1.318, `codex [PROMPT]`, `gemini -i`, `aider --message`); users add or override them in `harnesses.json`, which the app reads and never writes.
+- **Alternatives:** the FEATURE_FUTURE design (prompt in a temp file read with `cat {prompt_file}`); scripting Terminal with Apple Events; running the CLI as a child process.
+- **Why:** guardrail 2.1 says the user's text isn't written to disk, which a temp file would break, even briefly. Apple Events need a permission (rule 3). An agent CLI is interactive and needs a terminal, and running one headless would let it act where the user can't watch. The clipboard is overwritten, as Copy already does; the script reads it within a second of opening. Codex's own `--help` crashed on this Mac (a broken install), so its flags come from its source and docs.
+

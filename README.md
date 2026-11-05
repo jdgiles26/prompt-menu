@@ -63,8 +63,9 @@ flowchart LR
 | **Deterministic check** | A score out of 100 for sections, dropped facts, open questions and a checkable finish, with no model involved |
 | **Fill Gaps, Add Project** | Answer `[CONFIRM: …]` questions in place, and add a project's headings and commands to the context |
 | **Compare Models, Review** | Run a draft on several models, then have them judge blind and harden the winner, with a Review Log |
+| **Send To** | Start Claude Code, Codex, Gemini CLI, Aider or any CLI you add, in Terminal, in a folder you pick, with the prompt |
 | **The item inspector** | Read-only summaries of folders, databases, documents, archives and binaries, built for a small model's limits |
-| **Source and docs** | MIT-licensed Swift, 89 test functions that need no model, diagrams of every flow, and rules for AI agents working in the repo |
+| **Source and docs** | MIT-licensed Swift, 108 test functions that need no model, diagrams of every flow, and rules for AI agents working in the repo |
 
 ## The Services items
 
@@ -91,9 +92,10 @@ What an item is gets decided from its contents, so a database with no extension 
 | **A PDF, RTF, `.doc`, `.docx` or `.odt`** | The document's text |
 | **A binary property list** | The decoded settings |
 | **A zip, tar, gzip, bzip2, xz or 7z archive** | The list of files inside. Nothing is unpacked |
-| **An image, program or anything else** | Its type, size, date, first bytes and any readable fragments |
+| **An image** | Its type, size in pixels, date, and the text in it, read on this Mac with Vision |
+| **A program or anything else** | Its type, size, date, first bytes and any readable fragments |
 
-Expect a less exact answer when only details and fragments are available: the model works from those, and says what it couldn't see. Images are described only by their details, because a text model can't see the picture. Choosing several items splits the limit between them.
+Expect a less exact answer when only details and fragments are available: the model works from those, and says what it couldn't see. Images are described by their details and their text, because a text model can't see the picture: a screenshot of an error works well, a photo less so. Choosing several items splits the limit between them.
 
 ### If macOS blocks a file
 
@@ -109,7 +111,24 @@ macOS doesn't let apps read some items without asking, such as those in another 
 - **Add Project…** picks a folder and adds the headings and commands from its `AGENTS.md`, `CLAUDE.md` and README to the prompt's context. Nothing is read until you pick the folder.
 - **Compare Models…** (in the Model menu) runs the first draft with each ticked model, one after another, after showing an estimate. Each result is a version labeled with its model, time and check score.
 - **Review…** (in the Model menu) treats the versions as candidates. With two or more models, each one picks the best without seeing who wrote it, twice in reversed orders so position bias can't count. A model never counts for its own draft, models under about 7B count half, and the check votes too. Then the models harden the winner as security, scope and verifiability reviewers. An edit is kept only if the check score holds, no fact from your text is lost and nothing is repeated; kept edits become versions. **Review Log** shows every vote and each edit as a diff, kept or not. The log isn't saved.
+- **Ask a follow-up** answers any question about the text or the result. Ask it to change something, and the change becomes a new version, whole, even when the model sends back only the section it changed.
+- **Send To…** (rewrites only) starts a coding agent's CLI in Terminal, in a folder you pick or one of the last five, with the prompt as it's shown. Claude Code, Codex, Gemini CLI and Aider are listed when they're installed. **Copy Command** gives a command to paste into any terminal instead. See [Sending to an agent](#sending-to-an-agent).
 - **Try Again** repeats the last step: the first draft, or the last pattern. **Copy** (⌘↩) copies the text as shown, edits included.
+
+### Sending to an agent
+
+The prompt isn't written to disk. **Open in …** puts it on the clipboard and opens a small script in Terminal that holds only the folder and the command: it reads the prompt from the clipboard with `pbpaste`, passes it to the CLI as one argument, and deletes itself. **Copy Command for …** copies a `cd … && claude '…'` command with the prompt quoted as one word, so nothing in it can run as a command.
+
+Each CLI is data. To add one, or change the arguments of a built-in one, create `~/Library/Application Support/Prompt Menu/harnesses.json`:
+
+```json
+{"schema": 1, "harnesses": [
+  {"name": "Claude Code", "program": "claude", "arguments": ["--model", "opus", "{prompt}"]},
+  {"name": "My agent", "program": "my-agent", "arguments": ["--task", "{prompt}"]}
+]}
+```
+
+An entry with the name of a built-in one replaces it; others are added. Each needs a `program`, found the same way as the model runners, and exactly one argument containing `{prompt}`. Check the CLI's own `--help` for its flags. Prompt Menu reads this file and never writes it.
 
 ## Requirements
 
@@ -186,7 +205,7 @@ flowchart LR
 - 📴 **No downloads.** The app never fetches models or patterns. MLX and its worker run with `HF_HUB_OFFLINE=1`, and the pattern catalog is built in.
 - 🔑 **No special permissions.** No entitlements or `*UsageDescription` keys, so no Accessibility, Screen Recording, Apple Events or Full Disk Access. A test enforces this too.
 - 🎯 **It only sees what you act on.** macOS hands over the highlighted text or chosen items when you pick a menu item. The app doesn't watch your screen, clipboard or files.
-- 🧽 **It doesn't keep your data.** Your text and the model's output aren't logged or written to disk. Versions, the chat and the Review Log live in memory and go away with the dialog.
+- 🧽 **It doesn't keep your data.** Your text and the model's output aren't logged or written to disk, not even by Send To, which hands the prompt over by the clipboard. Versions, the chat and the Review Log live in memory and go away with the dialog.
 - 💤 **Nothing stays running,** except a kept-loaded MLX model for the time you set (5 minutes by default, 0 turns it off), with a visible menu-bar icon and **Unload Model Now**. There are no login items or daemons.
 - 📖 **Read-only on your files.** Explain never changes what it reads. Databases are opened in SQLite's immutable mode, so no locks, journal or `-wal` files are created beside them.
 - 🤐 **Careful inside folders.** You chose the folder, not each file in it. So files with secret-looking names (`.env`, `credentials`, `*.pem`…) and anything containing a private key are listed by name but never opened. Links aren't followed, and online-only iCloud files aren't downloaded. Database columns with secret-looking names show as `(hidden)`.
@@ -199,6 +218,7 @@ flowchart LR
 - **The app isn't sandboxed.** It reads only what you choose, but that's the app's own behavior rather than a macOS-enforced limit, and it's ad-hoc signed when you build it.
 - **Secret filtering is best effort.** It goes by names and private-key markers, so a secret in an ordinary file or column can still reach the local model. Something you choose directly is read as chosen, even if it looks secret.
 - **Online-only files you choose directly** may be downloaded by macOS when opened, as with any app.
+- **Send To hands the prompt to another program.** The agent CLI you pick runs in Terminal with its own settings and permissions, and may send the prompt to its provider's servers. That's the CLI's behavior, not Prompt Menu's, and it only happens when you choose it.
 - **Local models make mistakes.** Treat an explanation as a starting point, particularly for anything it marks "(probably)".
 
 ## Documentation
