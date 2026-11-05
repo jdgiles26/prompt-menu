@@ -118,10 +118,10 @@ Each pass writes at most five critique bullets, then edits. An edit is **kept on
 
 ## 6. Smaller items
 
-- **Keep llama.cpp and llamafile loaded too.** Both have interactive modes over stdin, but their prompts and turn markers vary by version. A worker like `mlx_worker.py`, wrapping each in a stdin/stdout protocol, needs per-version testing against real models. Their server modes stay ruled out, since they're network code.
-- **In-process MLX (mlx-swift)** for users with full Xcode: no Python, no worker. It needs a SwiftPM build path beside the plain `swiftc` one.
-- **A model-picked pattern from all 203** with a larger model: two-stage (category, then pattern) to keep each choice small.
-- **Pattern catalog refresh reminders** for developers: CI could warn when the snapshot is more than N months old (without fetching anything at run time).
+- **Keep llama.cpp and llamafile loaded too.** *Not built, measured instead (2026-11-05):* a warm `llama-completion` start with Qwen 2.5 3B took 0.76–1.09 s in all, 0.36–0.45 s of it loading, because macOS keeps the file cached. Its conversation mode fixes the system prompt at launch and carries earlier turns into each new one. Saving under a second isn't worth either. The original idea: Both have interactive modes over stdin, but their prompts and turn markers vary by version. A worker like `mlx_worker.py`, wrapping each in a stdin/stdout protocol, needs per-version testing against real models. Their server modes stay ruled out, since they're network code.
+- **In-process MLX (mlx-swift)** *Not built:* it needs full Xcode and SwiftPM, and the build rules allow only the Command Line Tools (AGENTS.md rule 4). The original idea: for users with full Xcode: no Python, no worker. It needs a SwiftPM build path beside the plain `swiftc` one.
+- **A model-picked pattern from all 203** *Built:* `pickPattern` asks for the category, then one of its ten best keyword matches, when the loaded model is about 7B or more (`choosesFromAllPatterns`). Smaller models keep choosing from the five shown. Untested with a real 7B model, as none is on the development Mac. The original idea: with a larger model: two-stage (category, then pattern) to keep each choice small.
+- **Pattern catalog refresh reminders** *Built:* CI warns when `Resources/patterns.json` was last committed more than 180 days ago. The original idea: for developers: CI could warn when the snapshot is more than N months old (without fetching anything at run time).
 
 ## Where the ideas come from
 

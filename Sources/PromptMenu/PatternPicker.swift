@@ -83,9 +83,10 @@ final class PatternPickerController: NSViewController, NSTableViewDataSource, NS
     }
 
     // The model's pick, as an index into the shortlist.
-    func suggest(_ index: Int) {
-        guard candidates.indices.contains(index) else { return }
-        suggested = candidates[index].slug
+    // Marks the model's pick with ★, adding it to the top of the list when it isn't among the five.
+    func suggest(_ pattern: AgenticPattern) {
+        suggested = pattern.slug
+        if search.stringValue.isEmpty, !rows.contains(where: { $0.slug == pattern.slug }) { rows.insert(pattern, at: 0) }
         table.reloadData()
         if let row = rows.firstIndex(where: { $0.slug == suggested }) { select(row) }
     }

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- With a kept-loaded model of about 7B or more, the ★ pattern suggestion chooses from all 203 patterns, in two steps.
+- CI warns when the pattern catalog is more than 180 days old.
 - **Send To…** in rewrite dialogs starts Claude Code, Codex, Gemini CLI or Aider (whichever are installed) in Terminal, in a folder you pick, with the prompt. Or **Copy Command** for any terminal. Add other CLIs in `harnesses.json`. The prompt goes by the clipboard and is never written to disk.
 - **Every built-in prompt checked against a real model, and repaired in code where it fell short.** Agent prompts keep every limit you stated and drop limits the model made up; CONSTRAINTS and DONE WHEN are proper bullet lists. Files, folders and numbers your text never gave get a `[CONFIRM: …]` instead of passing as facts. Commit messages lose "Subject:", "Body:" and "Fix:" labels and get their "Verified:" line from your notes. A RED phase can no longer say its tests pass. Code Review asks for specific checks, and Explain for real edge cases rather than generic advice.
 - **An edit asked for in the chat becomes a new version**, whole, even when the model returns only the changed section.

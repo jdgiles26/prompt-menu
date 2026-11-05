@@ -232,3 +232,38 @@ private func plainText(_ markdown: String) -> String {
         .components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         .joined(separator: " ")
 }
+
+// MARK: Choosing from all of them (FEATURE_FUTURE §6)
+
+// The catalog's categories, in the order they first appear.
+func patternCategories(_ patterns: [AgenticPattern]) -> [String] {
+    var seen = Set<String>()
+    return patterns.map(\.category).filter { seen.insert($0).inserted }
+}
+
+// A 3B model picks worse than the keyword order (docs/DECISIONS.md); from about 7B (3.5 GB at 4 bits,
+// the jury's full-weight size) a model is asked to choose from the whole catalog.
+func choosesFromAllPatterns(_ model: LocalModel) -> Bool { model.bytes >= smallJudgeBytes }
+
+private func categoryChoicePrompt(task: String, categories: [String], patterns: [AgenticPattern]) -> String {
+    let letters = "ABCDEFGHIJ".map(String.init)
+    let list = zip(letters, categories).map { letter, category in
+        let examples = patterns.filter { $0.category == category }.prefix(4).map(\.title).joined(separator: "; ")
+        return "\(letter). \(category). For example: \(examples)"
+    }.joined(separator: "\n")
+    return "OPTIONS:\n\(list)\n\nTASK:\n\(task.prefix(3000))\n\nWhich kind of workflow fits the task best? Reply with one letter: \(letters.prefix(categories.count).joined(separator: ", "))."
+}
+
+// Two small choices instead of one among 203: the category, then one of its ten best keyword
+// matches. `ask` runs the model with patternChoiceSystemPrompt. Nil when either reply names nothing.
+func pickPattern(task: String, from patterns: [AgenticPattern], ask: (String) throws -> String) -> AgenticPattern? {
+    let categories = Array(patternCategories(patterns).prefix(10))
+    guard !categories.isEmpty,
+          let category = (try? ask(categoryChoicePrompt(task: task, categories: categories, patterns: patterns)))
+            .flatMap({ parseChoice($0, count: categories.count) }) else { return nil }
+    let options = rankPatterns(for: task, in: patterns.filter { $0.category == categories[category] }).prefix(10).map(\.pattern)
+    guard !options.isEmpty,
+          let choice = (try? ask(patternChoicePrompt(task: task, options: Array(options)))).flatMap({ parseChoice($0, count: options.count) })
+    else { return nil }
+    return options[choice]
+}

@@ -8,7 +8,7 @@ Source: the request to fix rewrites failing on a deleted model (offer the models
 - [x] Round 2: §1 Fill Gaps, §2 Compare Models, §5 Add Project
 - [x] Round 3: §3 Review (jury, harden, Review Log), checked end to end with Qwen 2.5 3B and LFM2.5 1.2B through `llama-completion`
 - [x] Round 4: §4 Send to a coding agent's CLI. Built in Phase 6, round 2.
-- [ ] §6 smaller items: not started (keeping llama.cpp loaded needs per-version testing; mlx-swift needs Xcode, which the build rules exclude)
+- [x] §6 smaller items: done in Phase 6, round 3, except keeping llama.cpp loaded (measured, not worth it) and mlx-swift (needs Xcode)
 - [x] Committed (778afdc)
 
 ## Phase 2: Explain This for Me and the follow-up chat
@@ -58,7 +58,7 @@ Source: "fix all the known issues, bugs and ensure the built in prompts for each
 
 - [x] Round 1: every built-in prompt run on Qwen 2.5 3B (draft, each style, pattern, suggestion, chat); repairs in code with tests from those replies (stated and invented limits, bullets, invented names and numbers, RED vs gate, commit message shape, echoed instructions, SCOPE); prompt changes for Commit Message, Code Review, Explain and the chat; chat edits become a version; image text via Vision; Finder reading off the main thread with a limit; out-of-memory message; Explain spinner position; chat transcript cached
 - [x] Round 2: FEATURE_FUTURE §4 Send To: `Harness.swift` (defaults checked against each CLI's docs, `harnesses.json`, detection, Terminal script, Copy Command, recent folders), the Send To… menu. A generated script opened in Terminal through `NSWorkspace` and deleted itself (checked with `/usr/bin/true` as the CLI)
-- [ ] Round 3: FEATURE_FUTURE §6 items that fit the rules
+- [x] Round 3: FEATURE_FUTURE §6: whole-catalog pick for ~7B models (`pickPattern`, tested with a stand-in; no 7B model here), CI catalog-age warning. Not built, with reasons in DECISIONS: keeping llama.cpp loaded (measured: under 1 s to gain), mlx-swift (needs Xcode, rule 4)
 - [ ] Round 4: manual checks in the app, docs, push
 
 ## Open Questions

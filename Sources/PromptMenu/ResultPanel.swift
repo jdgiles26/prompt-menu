@@ -674,19 +674,24 @@ final class ResultPanelController: NSWindowController, NSWindowDelegate, NSTextV
         suggestPattern(task: task, candidates: candidates, picker: picker)
     }
 
-    // With the model already loaded, ask it which candidate fits (about a second). Otherwise the
-    // keyword order stands, rather than making the user wait for a model to load.
+    // With the model already loaded, ask it which candidate fits (about a second). A model of about
+    // 7B or more chooses from the whole catalog, in two steps; a smaller one from the five shown.
+    // Otherwise the keyword order stands, rather than making the user wait for a model to load.
     private func suggestPattern(task: String, candidates: [AgenticPattern], picker: PatternPickerController) {
         var config = loadConfig()
         guard let warm = warmRunner(config), warm.isLoaded, candidates.count > 1 else { return }
         config.systemPrompt = patternChoiceSystemPrompt
         config.maxTokens = 8
         config.temperature = 0
-        let question = patternChoicePrompt(task: task, options: candidates)
+        let wholeCatalog = modelsOnThisMac(config).first { $0.isCurrent(in: config) }.map(choosesFromAllPatterns) ?? false
         DispatchQueue.global(qos: .userInitiated).async { [weak picker] in
-            let reply = (try? rewrite(question, config: config, warm: warm, timeout: 30)) ?? ""
-            let choice = parseChoice(reply, count: candidates.count)
-            DispatchQueue.main.async { if let choice { picker?.suggest(choice) } }
+            let ask = { (question: String) in try rewrite(question, config: config, warm: warm, timeout: 30) }
+            if wholeCatalog, let pattern = pickPattern(task: task, from: bundledPatterns, ask: ask) {
+                DispatchQueue.main.async { picker?.suggest(pattern) }
+                return
+            }
+            let choice = parseChoice((try? ask(patternChoicePrompt(task: task, options: candidates))) ?? "", count: candidates.count)
+            DispatchQueue.main.async { if let choice { picker?.suggest(candidates[choice]) } }
         }
     }
 

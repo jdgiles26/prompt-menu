@@ -148,6 +148,7 @@ let tests: [(name: String, run: () throws -> Void)] = [
     ("send to agent: Terminal script", testHarnessTerminalScript),
     ("send to agent: copy command", testHarnessCopyCommand),
     ("send to agent: recent folders", testRecentAgentFolders),
+    ("pattern pick from all 203", testTwoStagePatternPick),
     ("launch: settings only when opened directly", testLaunchShowsSettingsOnlyWhenOpenedDirectly),
     ("service failures reach the user", testServiceFailuresReachTheUser),
     ("check: workflow gaps", testCheckerWorkflowGaps),

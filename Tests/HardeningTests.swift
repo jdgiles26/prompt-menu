@@ -235,3 +235,26 @@ func testChatEditMergesSections() throws {
     // "**Constraints:**" counts as the heading, as the checker accepts it.
     check(chatEdit("**Constraints:**\n- None.", of: result, style: .agentPrompt)?.contains("CONSTRAINTS") == false, "keeps the model's heading")
 }
+
+// FEATURE_FUTURE §6: a model big enough to choose well picks from all 203, in two small steps:
+// the category, then a pattern in it. A reply that names nothing gives nil, and the keyword order stands.
+func testTwoStagePatternPick() throws {
+    let patterns = try loadPatterns(from: "Resources/patterns.json")
+    let categories = patternCategories(patterns)
+    checkEqual(categories.count, Set(patterns.map(\.category)).count)
+    var prompts: [String] = []
+    let picked = pickPattern(task: "fix the 500 on /signin and add a regression test", from: patterns) { prompt in
+        prompts.append(prompt)
+        return prompts.count == 1 ? "\(Character(UnicodeScalar(65 + categories.firstIndex(of: "Feedback Loops")!)!))" : "A"
+    }
+    checkEqual(prompts.count, 2)
+    check(prompts[0].contains("Feedback Loops"), prompts[0])
+    checkEqual(picked?.category, "Feedback Loops")
+    // The second step offers only that category, at most 10 of them, best keyword matches first.
+    let offered = patterns.filter { $0.category == "Feedback Loops" }.filter { prompts[1].contains($0.title) }
+    check(!offered.isEmpty && offered.count <= 10, "\(offered.count) offered")
+    checkEqual(pickPattern(task: "x", from: patterns) { _ in "no idea" }, nil)
+    // Only models from about 7B choose better than the keyword order (docs/DECISIONS.md).
+    check(choosesFromAllPatterns(LocalModel(format: .mlx, id: "org/big", bytes: 4_500_000_000)), "7B")
+    check(!choosesFromAllPatterns(LocalModel(format: .mlx, id: "org/3b", bytes: 2_000_000_000)), "3B")
+}

@@ -85,3 +85,14 @@
 - **Alternatives:** the FEATURE_FUTURE design (prompt in a temp file read with `cat {prompt_file}`); scripting Terminal with Apple Events; running the CLI as a child process.
 - **Why:** guardrail 2.1 says the user's text isn't written to disk, which a temp file would break, even briefly. Apple Events need a permission (rule 3). An agent CLI is interactive and needs a terminal, and running one headless would let it act where the user can't watch. The clipboard is overwritten, as Copy already does; the script reads it within a second of opening. Codex's own `--help` crashed on this Mac (a broken install), so its flags come from its source and docs.
 
+## 2026-11-05: llama.cpp isn't kept loaded
+
+- **Chosen:** keep starting `llama-completion` once per run.
+- **Alternatives:** a worker around its conversation mode (`-cnv`), like `mlx_worker.py`; its server mode (network code, ruled out).
+- **Why:** measured with Qwen 2.5 3B, build 10470: a warm start took 0.76–1.09 s in all, 0.36–0.45 s of it loading, because macOS keeps the model file cached. Conversation mode fixes the system prompt at launch, so each style would need its own process, and it carries earlier turns into every new request, which changes the answers. That saves less than a second.
+
+## 2026-11-05: A model of about 7B chooses from the whole catalog
+
+- **Chosen:** with a kept-loaded model of 3.5 GB or more, the ★ suggestion asks in two steps (category, then one of its ten best keyword matches) over all 203 patterns, and the pick is added to the top of the list if it isn't among the five. Smaller models choose among the five shown.
+- **Why:** each step stays a choice among ten or fewer, which a small context handles. 3B models picked worse than the keyword order, so they don't get the bigger choice. Not run with a real 7B model here; tested with a stand-in.
+

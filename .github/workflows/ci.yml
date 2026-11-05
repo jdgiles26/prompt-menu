@@ -17,6 +17,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # The catalog check below needs the file's own history.
       - name: Test
         run: scripts/test.sh
       - name: Build
@@ -25,3 +27,13 @@ jobs:
         run: |
           plutil -lint Resources/*.plist
           codesign --verify --strict --deep "build/Prompt Menu.app"
+      # A reminder for developers, never a failure: the app never fetches the catalog itself.
+      - name: Check the pattern catalog's age
+        if: matrix.os == 'macos-26'
+        run: |
+          updated=$(git log -1 --format=%ct -- Resources/patterns.json)
+          days=$(( ($(date +%s) - updated) / 86400 ))
+          echo "Resources/patterns.json was last refreshed $days days ago."
+          if [ "$days" -gt 180 ]; then
+            echo "::warning file=Resources/patterns.json::The pattern catalog is $days days old. Refresh it with scripts/update-patterns.sh."
+          fi
