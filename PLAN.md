@@ -36,6 +36,16 @@ Evidence (2026-11-05): three right-clicks on `~/Library/Group Containers/group.c
 - [x] Committed, at the user's request
 - [ ] Finder right-click on a blocked file, start to finish, confirmed by the user. Choose File's grant was seen in the logs from one click during testing; the whole flow hasn't been watched
 
+## Phase 4: Explain anything from Finder
+
+Source: the request that Explain This for Me run on "folders, non file extension saved files, .db files and any file and any folder".
+
+- [x] Round 1: tests first (`ItemDescriptionTests`, reversed assertions marked with why), `ItemDescription.swift`, shared limit in `explainInput`, plist types, Choose… takes folders, prompt rule
+- [x] Round 2: real checks. Finder menu shows the item on a folder, `.db`, no-extension text, no-extension SQLite and a binary; a real click on `shop.db` reached the model with its schema. Qwen 2.5 3B explained a folder (21 s), a database (11 s) and `/bin/ls` (25 s). `~` and `/` were described in about 1.2 s
+- [ ] The result dialog for these items seen on screen: computer use couldn't be granted Prompt Menu, so the input reaching the model was checked instead of the dialog
+- [x] Round 3: README, ARCHITECTURE and FLOW_MAPS rewritten around what the app does, how, its benefits, assets and privacy, with flows 19 to 23
+- [x] Committed and pushed to main, at the user's request
+
 ## Open Questions
 
 - ~~Does macOS show a privacy prompt for Explain on a Finder file?~~ Answered 2026-11-05 for another app's folder: no prompt, a silent denial; see Phase 3 and docs/DECISIONS.md. ~/Documents, ~/Desktop and ~/Downloads weren't tested; the same window and Choose File handle a denial there.
@@ -45,8 +55,13 @@ Evidence (2026-11-05): three right-clicks on `~/Library/Group Containers/group.c
 
 ## Found Along the Way
 
-- Files with no extension (`Makefile`, a file named exactly `.env`) don't offer Explain in Finder: there's no extension to declare as text and `public.data` would bring PDFs and images back. Highlighted text works for them.
-- AGENTS.md says "five Services items"; there are six since Explain. Not changed in Phase 3.
+- Images get only type, size and dimensions, not what they show: the text model can't see them, and OCR wasn't added.
+- A walk from a home folder can touch ~/Documents, ~/Desktop and similar. Tested from this app's harness and through a Services launch of other folders, but not a Services launch on `~` itself, so whether macOS asks or blocks there is unverified. Blocked subfolders are marked in the layout.
+- Finder only flattens Services into the context menu's top level when there are few, so its position varies. That's macOS behavior.
+
+- ~~Files with no extension don't offer Explain in Finder.~~ Fixed in Phase 4.
+- ~~AGENTS.md says "five Services items".~~ Fixed in Phase 4.
+- PDFKit opening a file and reads from a slow disk have no time limit, and `explainThisForMe` waits for them on the main thread. Folders, databases and system tools do have limits.
 - `Prompt Menu.dmg` in the repo root (untracked, Oct 30) holds code from before this phase. Mounting or installing from it brings the old behavior back. No script builds it.
 - The app was installed at 13:05 on Oct 30, before the phase2-round4 commit (13:53), so those fixes never reached Services until this phase's install.
 - `suggestPattern` (the ★) only runs with a kept-loaded MLX model, so on llama.cpp, the current backend here, the keyword and task-type order is all there is.

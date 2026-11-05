@@ -139,5 +139,6 @@ Rules:
 - Put **bold** on each key term the first time it appears, and define jargon right where it's used.
 - Quote names, values and error messages exactly as they appear in the text.
 - Explain only what the text shows. Never invent behavior. Where you have to guess, add "(probably)" and say what would confirm it.
+- The text may describe a folder (its layout and some of its files), a database (its tables, columns and sample rows) or a file that isn't text (its type and readable fragments), instead of showing everything. Then work out what it's for and how its parts fit together from those names and details, say HOW IT WORKS in terms of those parts, and put what you couldn't see under WATCH OUT FOR.
 - Reply with only the explanation: no preamble, no closing remarks.
 """

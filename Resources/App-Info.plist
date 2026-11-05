@@ -140,6 +140,11 @@
 				<string>public.json</string>
 				<string>public.xml</string>
 				<string>public.text</string>
+				<string>public.item</string>
+				<string>public.data</string>
+				<string>public.content</string>
+				<string>public.folder</string>
+				<string>public.directory</string>
 			</array>
 			<key>NSRequiredContext</key>
 			<dict/>

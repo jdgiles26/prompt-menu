@@ -68,21 +68,18 @@ func testExplainFileInput() throws {
     try String(repeating: "x", count: maxInputCharacters * 2).write(toFile: big, atomically: true, encoding: .utf8)
     checkEqual(try explainInput(files: [big]).count, maxInputCharacters)
 
-    // Bytes are trimmed only where the read stopped mid-character, not to excuse a bad last byte.
+    // Bytes are trimmed only where the read stopped mid-character. Changed 2026-11-05: a bad byte in
+    // otherwise plain text used to refuse the file; "any file" now reads it in the old single-byte encoding.
     let tail = (dir as NSString).appendingPathComponent("tail.txt")
-    try (Data(String(repeating: "a", count: maxInputCharacters + 1000).utf8) + [0xFF]).write(to: URL(fileURLWithPath: tail))
-    checkThrows(.unreadableFile("tail.txt")) { _ = try explainInput(files: [tail]) }
+    try (Data(String(repeating: "a", count: 1000).utf8) + [0xFF]).write(to: URL(fileURLWithPath: tail))
+    checkEqual(try explainInput(files: [tail]), "File: tail.txt\n\n" + String(repeating: "a", count: 1000) + "ÿ")
     let cut = (dir as NSString).appendingPathComponent("cut.txt")
     try String(repeating: "é", count: maxInputCharacters * 3).write(toFile: cut, atomically: true, encoding: .utf8)
     checkEqual(try explainInput(files: [cut]).count, maxInputCharacters)
-    // Once the text is full, later files aren't read at all.
-    checkEqual(try explainInput(files: [big, (dir as NSString).appendingPathComponent("gone.txt")]).count, maxInputCharacters)
+    // Changed 2026-11-05: a later file used to go unread once the first filled the limit. A mixed selection now shares it; see testExplainMixedSelection.
 
-    // Not text: a binary file, a folder, a file that isn't there.
-    let binary = (dir as NSString).appendingPathComponent("image.png")
-    try Data([0x89, 0x50, 0x4E, 0x47, 0x00, 0xFF, 0xFE, 0x00]).write(to: URL(fileURLWithPath: binary))
-    checkThrows(.unreadableFile("image.png")) { _ = try explainInput(files: [binary]) }
-    checkThrows(.unreadableFile((dir as NSString).lastPathComponent)) { _ = try explainInput(files: [dir]) }
+    // Changed 2026-11-05 at the user's request: a binary file and a folder used to be refused; they're
+    // described now (ItemDescriptionTests). Only something that isn't there can't be explained.
     checkThrows(.unreadableFile("gone.txt")) { _ = try explainInput(files: [(dir as NSString).appendingPathComponent("gone.txt")]) }
     checkThrows(.emptyInput) { _ = try explainInput(files: []) }
 }

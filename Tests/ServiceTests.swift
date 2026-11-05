@@ -82,11 +82,15 @@ func testExplainStyle() throws {
         throw TestFailure(description: "no Services item for explainThisForMe")
     }
     let fileTypes = service["NSSendFileTypes"] as? [String] ?? []
-    check(fileTypes.contains("public.plain-text") && fileTypes.contains("public.source-code"),
-          "Explain This for Me should show on text and code files in Finder")
-    // public.data would also match PDFs and images, which can't be explained, so it stays out.
-    check(!fileTypes.contains("public.data") && !fileTypes.contains("public.item") && !fileTypes.contains("public.content"),
-          "Explain This for Me shouldn't show on PDFs and images")
+    // Changed 2026-11-05 at the user's request: offered on any file and any folder. This reverses the
+    // earlier choice to keep it off PDFs and images, now that those get a real answer.
+    for type in ["public.item", "public.data", "public.folder", "public.directory"] {
+        check(fileTypes.contains(type), "Explain This for Me should be offered for \(type)")
+    }
+    let chooser = try String(contentsOfFile: "Sources/PromptMenu/FailurePanel.swift", encoding: .utf8)
+    check(chooser.contains("canChooseDirectories = true"), "a blocked folder must be choosable by hand")
+    check(Style.explain.builtInPrompt.contains("folder") && Style.explain.builtInPrompt.contains("database"),
+          "the instructions should cover input that isn't a file's text")
     check(fileTypes.contains("public.text"), "HTML, YAML and other text formats aren't public.plain-text")
     // macOS has no type for these text formats, so Finder wouldn't offer the item without this.
     let imported = plist["UTImportedTypeDeclarations"] as? [[String: Any]] ?? []

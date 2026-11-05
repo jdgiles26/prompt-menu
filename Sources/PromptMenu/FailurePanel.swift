@@ -5,7 +5,7 @@ import Cocoa
 // wait behind it until they time out, and a quit (logout, or scripts/install.sh) would be ignored.
 final class FailurePanelController: NSWindowController, NSWindowDelegate {
     private let label = NSTextField(wrappingLabelWithString: "")
-    private let chooseButton = NSButton(title: "Choose File…", target: nil, action: nil)
+    private let chooseButton = NSButton(title: "Choose…", target: nil, action: nil)
     private let files: [URL]
     private let explain: ([URL]) throws -> Void
     private var openPanel: NSOpenPanel?
@@ -61,7 +61,7 @@ final class FailurePanelController: NSWindowController, NSWindowDelegate {
     @objc private func chooseFiles(_ sender: Any?) {
         let open = NSOpenPanel()
         open.canChooseFiles = true
-        open.canChooseDirectories = false
+        open.canChooseDirectories = true
         open.allowsMultipleSelection = files.count > 1
         open.directoryURL = files[0].deletingLastPathComponent()
         open.prompt = "Explain"

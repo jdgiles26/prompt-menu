@@ -34,7 +34,7 @@ enum RewriteError: Error, Equatable {
     case timedOut
     case emptyOutput
     case modelError(String)  // The kept-loaded model replied with an error, such as a model that isn't downloaded.
-    case unreadableFile(String)  // A file from Finder that isn't text, or can't be read.
+    case unreadableFile(String)  // Something from Finder that's gone, or that couldn't be read.
     case protectedFile(String)   // macOS or the file's permissions refused to open it.
     case emptyFile(String)
 }
@@ -53,9 +53,9 @@ extension RewriteError: LocalizedError {
         case .timedOut: return "The model took too long and was stopped. Try a smaller model or shorter text."
         case .emptyOutput: return "The model didn't return any text."
         case .modelError(let message): return "The model couldn't answer.\n\n\(message)"
-        case .unreadableFile(let name): return "Couldn't read \(name) as text. Explain This for Me works on text and code files."
+        case .unreadableFile(let name): return "Couldn't read \(name). It may have been moved or deleted, or the disk it's on may not be available."
         case .protectedFile(let name):
-            return "macOS didn't let Prompt Menu open \(name). It's in a protected place, such as a folder that belongs to another app, and macOS blocks this without asking.\n\nIf you choose the file yourself, macOS can allow it."
+            return "macOS didn't let Prompt Menu open \(name). It's in a protected place, such as a folder that belongs to another app, and macOS blocks this without asking.\n\nIf you choose it yourself, macOS can allow it."
         case .emptyFile(let name): return "\(name) is empty, so there's nothing to explain."
         }
     }
@@ -81,44 +81,37 @@ func prepareInput(_ text: String) throws -> String {
     return String(trimmed.prefix(maxInputCharacters))
 }
 
-// Files chosen in Finder for Explain This for Me: each one's name, then its text, cut to
-// maxInputCharacters. Only the files the user picked are read, and nothing is written.
+// Anything chosen in Finder for Explain This for Me: each item's name, then its text or a description
+// of it (ItemDescription.swift), all within maxInputCharacters. Items share that limit, so a big first
+// one can't crowd the others out. Only what the user picked is read, and nothing is written.
 func explainInput(files: [String]) throws -> String {
     guard !files.isEmpty else { throw RewriteError.emptyInput }
-    // Enough for the cut below, without reading a huge file whole: a character is at most 4 bytes.
-    let readLimit = maxInputCharacters * 4
-    var text = ""
-    for path in files where text.count < maxInputCharacters {
-        let name = (path as NSString).lastPathComponent
-        var isFolder: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), !isFolder.boolValue else { throw RewriteError.unreadableFile(name) }
-        // open() rather than FileHandle(forReadingAtPath:), whose nil can't tell "macOS refused" from "gone".
-        // Non-blocking, so a named pipe can't hang the app while Finder waits.
-        let descriptor = open(path, O_RDONLY | O_NONBLOCK)
-        guard descriptor >= 0 else {
-            throw errno == EPERM || errno == EACCES ? RewriteError.protectedFile(name) : RewriteError.unreadableFile(name)
+    // Past this each share is too small to say anything, so the rest are only named.
+    let described = files.prefix(20)
+    let leftOver = files.dropFirst(described.count).map { ($0 as NSString).lastPathComponent }
+    let reserve = leftOver.isEmpty ? 0 : min(maxInputCharacters / 4, 40 + leftOver.joined(separator: ", ").count)
+    var parts: [String] = []
+    var used = reserve
+    var firstFailure: RewriteError?
+    var worked = 0
+    for (index, path) in described.enumerated() {
+        let share = (maxInputCharacters - used) / (described.count - index)
+        do {
+            parts.append(try describeItem(path, limit: share))
+            worked += 1
+        } catch RewriteError.protectedFile(let name) {
+            // Stop here: Choose File can grant the whole selection, which beats explaining part of it.
+            throw RewriteError.protectedFile(name)
+        } catch let failure as RewriteError {
+            guard described.count > 1 else { throw failure }
+            firstFailure = firstFailure ?? failure
+            parts.append("\((path as NSString).lastPathComponent): couldn't be read, or is empty.")
         }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        // read(upToCount:) throws on an I/O error (a drive pulled mid-read); readData raises an
-        // Objective-C exception that Swift can't catch.
-        guard let data = try? handle.read(upToCount: readLimit) ?? Data() else { throw RewriteError.unreadableFile(name) }
-        guard let contents = decodedText(data, wasCut: data.count == readLimit), !contents.contains("\u{0}") else { throw RewriteError.unreadableFile(name) }
-        let body = contents.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { throw RewriteError.emptyFile(name) }
-        text += (text.isEmpty ? "" : "\n\n") + "File: \(name)\n\n\(body)"
+        used += parts[parts.count - 1].count + 2
     }
-    return String(text.prefix(maxInputCharacters))
-}
-
-// UTF-8, or UTF-16 with its byte order mark. A read that stopped early may have ended inside a
-// character; only then are its last bytes dropped.
-private func decodedText(_ data: Data, wasCut: Bool) -> String? {
-    if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
-        return String(data: wasCut ? data.prefix(data.count & ~1) : data, encoding: .utf16)
-    }
-    var contents = String(data: data, encoding: .utf8)
-    for drop in 1...3 where contents == nil && wasCut { contents = String(data: data.dropLast(drop), encoding: .utf8) }
-    return contents
+    if worked == 0, let firstFailure { throw firstFailure }
+    if !leftOver.isEmpty { parts.append("Also selected, not looked at: " + leftOver.joined(separator: ", ")) }
+    return String(parts.joined(separator: "\n\n").prefix(maxInputCharacters))
 }
 
 // For runners that take a single prompt and no separate system prompt.

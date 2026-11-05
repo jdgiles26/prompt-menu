@@ -34,7 +34,7 @@ final class ServiceProvider: NSObject {
         open(pasteboard, as: .commitMessage, error: error)
     }
 
-    // Highlighted text, or text and code files right-clicked in Finder.
+    // Highlighted text, or any files and folders right-clicked in Finder.
     @objc func explainThisForMe(_ pasteboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
         let files = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         guard !files.isEmpty else { open(pasteboard, as: .explain, error: error); return }
