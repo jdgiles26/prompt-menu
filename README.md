@@ -1,8 +1,12 @@
 # Prompt Menu
 
-**Turn rough notes into a prompt an AI agent can act on, from any Mac app, with a model that runs on your Mac.**
+**A right-click assistant for your Mac that runs entirely on your Mac.** Turn rough notes into prompts, bug reports, code review requests and commit messages, or get a plain-language explanation of any text, file, folder or database, using an AI model on your own machine.
 
-Highlight text anywhere (Notes, Mail, Slack, a browser, your editor), right-click → **Services → Rewrite as Agent Prompt**. A dialog opens and the rewritten prompt streams in:
+## What it does
+
+Prompt Menu adds six items to the macOS right-click menu, under **Services** in nearly every app and in Finder. It does two jobs:
+
+**1. Rewrites what you've highlighted.** Select rough text anywhere (Notes, Mail, Slack, a browser, your editor), right-click → **Services → Rewrite as Agent Prompt**. A dialog opens and the result streams in:
 
 ```text
 ROLE: …          who the agent should act as
@@ -15,12 +19,52 @@ DONE WHEN: …     checkable signs it's finished
 
 Wherever your notes leave something out, the model writes `[CONFIRM: what to ask]` instead of guessing. Edit the result in the dialog, then **Copy** (⌘↩).
 
-- 🔒 **Local only.** No network code at all, and a test fails the build if any appears. The model runs as a local program.
-- 🧩 **Your choice of runner:** Apple **MLX**, Mozilla.ai's **llamafile**, or **llama.cpp**.
+**2. Explains what you point it at.** Highlight text, or right-click anything in Finder, and choose **Explain This for Me**. That includes a folder, a `.db` file, a file with no extension, a PDF or a program. You get short, scannable sections: TL;DR · WHAT IT IS · HOW IT WORKS · KEY PARTS · WATCH OUT FOR · NEXT STEPS. Then ask follow-up questions right in the dialog.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["You right-click<br/>text, a file or a folder"] --> B["macOS Services<br/>hands over only that item"]
+    B --> C["Prompt Menu<br/>builds the request"]
+    C --> D["A local model program<br/>MLX, llamafile or llama.cpp"]
+    D --> E["The result streams<br/>into a dialog"]
+    E --> F["You edit, check, ask,<br/>apply a pattern, copy"]
+```
+
+1. **macOS calls the app** when you pick a menu item. Nothing is running before that: no login item and no background process.
+2. **The app prepares the input.** Text is used as it is. For something from Finder, the app works out what it really is from its contents, not its name, and writes a short description a text model can use (see [What it looks at in Finder](#what-it-looks-at-in-finder)).
+3. **A model runner starts as an ordinary program** on your Mac, with instructions for the style you picked. There's no server, and Prompt Menu has no network code.
+4. **The dialog shows the result as it's written.** Every version is kept while the dialog is open, a built-in check scores prompts without using a model, and you can ask follow-ups.
+5. **The app quits when you're done.** With MLX, the model can stay loaded for a few minutes to make the next run fast, with a menu-bar icon showing it's there.
+
+[docs/FLOW_MAPS.md](docs/FLOW_MAPS.md) has a diagram of every path, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how it's built.
+
+## Benefits
+
+- 🔒 **Your text and files stay on your Mac.** No account, API key, cloud service or per-use cost. A test fails the build if network code appears in the app.
+- 🖱️ **It works where you already are.** There's no new app to switch to and nothing to paste into a chat window.
+- 🧠 **It understands more than text.** Folders, SQLite databases, PDFs, Word files, settings files, archives and programs all get a useful answer. Your own models can explain things they could never read as raw bytes.
+- ✈️ **It works offline.** Once a runner and model are on your Mac, no connection is needed.
+- 🧩 **You choose the model.** Use Apple **MLX**, Mozilla.ai's **llamafile**, or **llama.cpp**, with any suitable model you already have. The dialog lists what's on your Mac.
+- 🧭 **Prompts agents can act on.** Agentic rewrites are real workflows: phases, each with a gate that must pass, plus a way to recover and a point to stop.
+- ✅ **Fewer silent mistakes from small models.** The built-in check flags missing sections and dropped facts, and open questions are marked rather than guessed.
 - ⚡ **Fast repeats.** The MLX model stays loaded for 5 minutes after use, so the next rewrite starts writing in under a second instead of about 10.
-- 🧭 **Agentic patterns.** One click restructures the prompt around a proven workflow from [Awesome Agentic Patterns](https://github.com/nibzard/awesome-agentic-patterns), such as Plan-Then-Execute or Spec-As-Test.
-- ✅ **A built-in check.** Each result gets a score for missing sections, facts dropped from your text, open questions and a checkable finish, with no model involved.
-- 🪶 **Small.** Swift built with the Command Line Tools. No Xcode project, no dependencies.
+- 🪶 **Small and easy to inspect.** About 1.3 MB installed, about 4,800 lines of Swift, and no third-party dependencies. Built with the Command Line Tools, with no Xcode project.
+
+## What you get
+
+| Asset | What it is |
+|---|---|
+| **Six Services items** | Agent Prompt, Bug Report, Code Review Request, Commit Message, Replace Selection, and Explain This for Me |
+| **The result dialog** | Streaming output, version history, editing, a model menu and Copy |
+| **Follow-up chat** | An **Ask a follow-up** box in every dialog, with the text and result as context |
+| **203 agentic patterns** | A built-in snapshot of [Awesome Agentic Patterns](https://github.com/nibzard/awesome-agentic-patterns), with a shortlist, search and code-owned phases and gates |
+| **Deterministic check** | A score out of 100 for sections, dropped facts, open questions and a checkable finish, with no model involved |
+| **Fill Gaps, Add Project** | Answer `[CONFIRM: …]` questions in place, and add a project's headings and commands to the context |
+| **Compare Models, Review** | Run a draft on several models, then have them judge blind and harden the winner, with a Review Log |
+| **The item inspector** | Read-only summaries of folders, databases, documents, archives and binaries, built for a small model's limits |
+| **Source and docs** | MIT-licensed Swift, 89 test functions that need no model, diagrams of every flow, and rules for AI agents working in the repo |
 
 ## The Services items
 
@@ -31,11 +75,29 @@ Wherever your notes leave something out, the model writes `[CONFIRM: what to ask
 | **Rewrite as Code Review Request** | CHANGE · CONTEXT · REVIEW FOCUS · OUT OF SCOPE · TESTING · DONE WHEN |
 | **Rewrite as Commit Message** | An imperative subject of at most 72 characters, and a body that says what and why |
 | **Rewrite as Agent Prompt (Replace Selection)** | The agent prompt, replacing the highlighted text directly, with no dialog. A small window shows progress. |
-| **Explain This for Me** | An in-depth explanation of the highlighted text or code, or of text and code files right-clicked in Finder, in small easy-to-scan pieces: TL;DR · WHAT IT IS · HOW IT WORKS · KEY PARTS · WATCH OUT FOR · NEXT STEPS |
+| **Explain This for Me** | An in-depth explanation of the highlighted text or code, or of any file or folder right-clicked in Finder (folders, `.db` databases, files with no extension, PDFs, binaries), in small easy-to-scan pieces: TL;DR · WHAT IT IS · HOW IT WORKS · KEY PARTS · WATCH OUT FOR · NEXT STEPS |
 
 Every dialog has an **Ask a follow-up** box under the result. Ask anything about the text or the result; each question is sent to the same local model with the highlighted text, the result as it is now (edits included) and the conversation so far. The conversation isn't saved.
 
-**If macOS blocks a file.** macOS doesn't let apps read some files without asking, such as those in another app's folder under `~/Library/Group Containers`. Explain This for Me then says so and offers **Choose File…**. Pick the file there and macOS lets Prompt Menu read that file from then on. Prompt Menu asks for no permissions of its own.
+### What it looks at in Finder
+
+What an item is gets decided from its contents, so a database with no extension is still treated as a database, and a `.db` that isn't SQLite still gets an answer. Everything shares an 8,000-character limit, which suits small models on 8 GB Macs. A file or folder too big for that is sampled, not read whole.
+
+| You choose | What the model is given |
+|---|---|
+| **Text or code, with any extension or none** | The text, including UTF-16 and older single-byte encodings |
+| **A folder or app bundle** | Totals, common file types, largest and newest files, the layout, and the start of files that say what it is, such as the README or `package.json` |
+| **A SQLite database, with any name** | Tables, columns, row counts and up to three sample rows per table, biggest tables first |
+| **A PDF, RTF, `.doc`, `.docx` or `.odt`** | The document's text |
+| **A binary property list** | The decoded settings |
+| **A zip, tar, gzip, bzip2, xz or 7z archive** | The list of files inside. Nothing is unpacked |
+| **An image, program or anything else** | Its type, size, date, first bytes and any readable fragments |
+
+Expect a less exact answer when only details and fragments are available: the model works from those, and says what it couldn't see. Images are described only by their details, because a text model can't see the picture. Choosing several items splits the limit between them.
+
+### If macOS blocks a file
+
+macOS doesn't let apps read some items without asking, such as those in another app's folder under `~/Library/Group Containers`. Explain This for Me then says so and offers **Choose…**. Pick the item there, and macOS can let Prompt Menu read it. Prompt Menu asks for no permissions of its own.
 
 ## The dialog
 
@@ -67,7 +129,7 @@ Then open **Prompt Menu** from `~/Applications` to pick a runner and model, and 
 
 To remove it: `scripts/install.sh --uninstall`
 
-If **Rewrite as Agent Prompt** doesn't appear under Services, turn it on in **System Settings → Keyboard → Keyboard Shortcuts → Services → Text**. You can give it a keyboard shortcut there too.
+If an item doesn't appear in the right-click menu, turn it on in **System Settings → Keyboard → Keyboard Shortcuts → Services**. You can give it a keyboard shortcut there too. In Finder, the item may be directly in the menu or under **Services**: that depends on how many services apply.
 
 ## Runners
 
@@ -83,7 +145,7 @@ Prompt Menu looks for the program on your `PATH`, in Homebrew's folders, `~/.loc
 
 **Keeping the model loaded.** With MLX, the model stays in memory for 5 minutes after each use (about 2 GB for a 3B model) and a menu-bar icon shows while it's loaded. Click it to see the time left or choose **Unload Model Now**; Prompt Menu quits once nothing is open and the model is unloaded. Set the time in settings, or 0 to unload right after each rewrite. llamafile and llama.cpp always run once per rewrite.
 
-**Status:** MLX is tested end to end with a real model. The llamafile and llama.cpp command lines are covered by tests but haven't yet been run against real models; reports welcome.
+**Status:** MLX and llama.cpp have been run end to end with real models. The llamafile command line is covered by tests but hasn't yet been run against a real model; reports welcome.
 
 MLX runs with `HF_HUB_OFFLINE=1`, so Prompt Menu never downloads a model itself. Only what's already on disk is used.
 
@@ -105,18 +167,46 @@ defaults write local.promptmenu keepLoadedMinutes -int 5                # 0–12
 
 ## Privacy
 
-- No network code: the build's tests scan `Sources/` for networking APIs and URLs, and the MLX worker script for network and download calls.
-- No entitlements, no permissions requested, no telemetry, no logs of your text.
-- Your text goes to the runner as a command-line argument, or to the kept-loaded MLX worker through a pipe that only Prompt Menu holds. It stays on this Mac. The worker exits when Prompt Menu does.
-- The model stays in memory only for the keep-loaded time (5 minutes by default, 0 to turn it off). Then Prompt Menu quits if nothing is open.
-- The pattern catalog is built into the app. Nothing is fetched.
+Prompt Menu's main design goal is that nothing you give it needs to leave your Mac.
+
+```mermaid
+flowchart LR
+    subgraph Mac["Your Mac"]
+        Y["What you chose<br/>text, file or folder"] --> P["Prompt Menu<br/>no network code"]
+        P -->|"argument, or a private pipe"| R["Local model runner"]
+        R --> D["Dialog, in memory only"]
+    end
+    P -. "no telemetry, no uploads, no downloads" .-x N(("Internet"))
+```
+
+**What's in your favor**
+
+- 🚫 **No network code in the app.** No `URLSession`, sockets, web views or local servers. A test scans `Sources/` and fails the build if any appear, and CI runs it on every push to `main` and every pull request.
+- 🙈 **No telemetry, analytics or crash reporting,** and no account, sign-in or API key.
+- 📴 **No downloads.** The app never fetches models or patterns. MLX and its worker run with `HF_HUB_OFFLINE=1`, and the pattern catalog is built in.
+- 🔑 **No special permissions.** No entitlements or `*UsageDescription` keys, so no Accessibility, Screen Recording, Apple Events or Full Disk Access. A test enforces this too.
+- 🎯 **It only sees what you act on.** macOS hands over the highlighted text or chosen items when you pick a menu item. The app doesn't watch your screen, clipboard or files.
+- 🧽 **It doesn't keep your data.** Your text and the model's output aren't logged or written to disk. Versions, the chat and the Review Log live in memory and go away with the dialog.
+- 💤 **Nothing stays running,** except a kept-loaded MLX model for the time you set (5 minutes by default, 0 turns it off), with a visible menu-bar icon and **Unload Model Now**. There are no login items or daemons.
+- 📖 **Read-only on your files.** Explain never changes what it reads. Databases are opened in SQLite's immutable mode, so no locks, journal or `-wal` files are created beside them.
+- 🤐 **Careful inside folders.** You chose the folder, not each file in it. So files with secret-looking names (`.env`, `credentials`, `*.pem`…) and anything containing a private key are listed by name but never opened. Links aren't followed, and online-only iCloud files aren't downloaded. Database columns with secret-looking names show as `(hidden)`.
+- 🔍 **You can check all of this.** The source is small, open and has no dependencies, and you build it yourself.
+
+**Limits worth knowing**
+
+- **Runners are separate programs.** The promises above are about Prompt Menu. The runner and model are software you install, so trust them accordingly. MLX is forced offline; for the others, use a build you trust.
+- **Other programs under your account can see the text during a run.** It's passed to one-shot runners as a command-line argument, which tools like `ps` can show while the model runs. The kept-loaded MLX worker uses a private pipe instead. The text never leaves your Mac either way.
+- **The app isn't sandboxed.** It reads only what you choose, but that's the app's own behavior rather than a macOS-enforced limit, and it's ad-hoc signed when you build it.
+- **Secret filtering is best effort.** It goes by names and private-key markers, so a secret in an ordinary file or column can still reach the local model. Something you choose directly is read as chosen, even if it looks secret.
+- **Online-only files you choose directly** may be downloaded by macOS when opened, as with any app.
+- **Local models make mistakes.** Treat an explanation as a starting point, particularly for anything it marks "(probably)".
 
 ## Documentation
 
 | Doc | For |
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it's built: modules, types, decisions |
-| [docs/FLOW_MAPS.md](docs/FLOW_MAPS.md) | Diagrams of every flow: service call, rewrite, streaming, errors, settings |
+| [docs/FLOW_MAPS.md](docs/FLOW_MAPS.md) | Diagrams of every flow: service call, rewrite, streaming, errors, settings, how Explain reads each kind of item, and where your data goes |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Building, testing, debugging, releasing |
 | [AGENTS.md](AGENTS.md) | Rules for AI agents working in this repo |
 | [docs/AGENTIC_DEVELOPMENT.md](docs/AGENTIC_DEVELOPMENT.md) | Guardrails, what to touch and not touch, and the change-impact map |
@@ -133,34 +223,13 @@ The agentic patterns are from [Awesome Agentic Patterns](https://github.com/nibz
 
 MIT. See [LICENSE](LICENSE).
 
-## Repository status (2026-10-30)
+## What's in this repository
 
-Local project folder backed up from this Mac.
-
-- Local folder: `/Users/admin/Development/prompt-menu`
-- GitHub: https://github.com/jdgiles26/prompt-menu
-- Manifests: none at the root
-- File types under the root (dependencies skipped): .swift 34, .md 10, (none) 5, .sh 4, .plist 2, .json 1, .py 1, .txt 1, .yml 1
-
-### How to run
-
-- No package script, Makefile, or compose file was found at the project root.
-
-### Layout
-
-- `.github/`
-- `.gitignore`
-- `AGENTS.md`
-- `build/`
-- `CHANGELOG.md`
-- `CLAUDE.md`
-- `docs/`
-- `LICENSE`
-- `PLAN.md`
-- `README.md`
-- `Resources/`
-- `scripts/`
-- `Sources/`
-- `Tests/`
-
-Weight files (`.gguf` and similar), virtual environments, `node_modules`, and files over 95MB stay on this Mac. They are not part of this commit. Secrets such as `.env`, private keys, and recovery codes are not committed.
+| Path | What's there |
+|---|---|
+| `Sources/Core/` | The logic: styles, runners, the checker, patterns, chat and the item inspector. Fully tested |
+| `Sources/PromptMenu/` | The AppKit app: Services entry points, dialogs and settings |
+| `Resources/` | The Info.plist with the Services items, the MLX worker, and the pattern catalog with its license notice |
+| `Tests/` | A small test runner and its tests, run with `scripts/test.sh`. They never need a real model or the network |
+| `scripts/` | Build, test, install and pattern-refresh scripts |
+| `docs/` | Architecture, flow maps, development guide, decisions and future designs |

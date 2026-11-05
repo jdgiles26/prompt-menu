@@ -2,6 +2,8 @@
 
 Diagrams of every path through Prompt Menu. They render on GitHub. Names in `code` are the real functions and types; see [ARCHITECTURE.md](ARCHITECTURE.md) for what each file owns.
 
+- [The whole app at a glance](#the-whole-app-at-a-glance)
+
 1. [App launch: Services or settings](#1-app-launch-services-or-settings)
 2. [Service call to dialog](#2-service-call-to-dialog)
 3. [The rewrite pipeline](#3-the-rewrite-pipeline)
@@ -20,6 +22,34 @@ Diagrams of every path through Prompt Menu. They render on GitHub. Names in `cod
 16. [Review: jury, then hardening](#16-review-jury-then-hardening)
 17. [Explain This for Me](#17-explain-this-for-me)
 18. [Follow-up chat](#18-follow-up-chat)
+19. [Explain: what is this item?](#19-explain-what-is-this-item)
+20. [Explain: reading a folder](#20-explain-reading-a-folder)
+21. [Explain: reading a database](#21-explain-reading-a-database)
+22. [Explain: several items at once](#22-explain-several-items-at-once)
+23. [Privacy: where your data goes](#23-privacy-where-your-data-goes)
+
+---
+
+## The whole app at a glance
+
+Every path starts with a right-click and ends with a result you control. Nothing runs before the click, and nothing stays running afterward except a kept-loaded MLX model, if that's turned on.
+
+```mermaid
+flowchart TD
+    A(["Right-click in any app or Finder"]) --> B{"Which item?"}
+    B -->|"Rewrite as Agent Prompt, Bug Report,<br/>Code Review, Commit Message"| C["Highlighted text"]
+    B -->|"Replace Selection"| D["Highlighted text,<br/>replaced in place"]
+    B -->|"Explain This for Me"| E{"Text or Finder items?"}
+    E -->|text| F["Highlighted text"]
+    E -->|items| G["Item inspector:<br/>folder, database, document,<br/>text, archive or file profile"]
+    C & F & G --> H["Local model runner<br/>MLX, llamafile or llama.cpp"]
+    D --> H
+    H --> D2["Text replaced, app quits"]
+    H --> I["Dialog: streamed result"]
+    I --> J["Edit, versions, Ask a follow-up, Copy"]
+    I --> K["Rewrites only: check score, Agentic Pattern,<br/>Fill Gaps, Add Project, Review"]
+    J & K --> L(["Close: everything in the dialog is gone,<br/>and the app quits when nothing is left open"])
+```
 
 ---
 
@@ -225,7 +255,7 @@ flowchart LR
         E[timedOut]
         F[emptyOutput]
         G["modelError(message)"]
-        U2["unreadableFile(name) · emptyFile(name)<br/>protectedFile(name)<br/>Explain on Finder files: FailurePanelController,<br/>protectedFile with Choose File…"]
+        U2["unreadableFile(name): gone or unavailable · emptyFile(name)<br/>protectedFile(name)<br/>Explain on Finder items: FailurePanelController,<br/>protectedFile with Choose…"]
     end
     A --> A1["There's no text to rewrite. Highlight some text first.<br/>(also returned to macOS by ServiceProvider)"]
     B --> B1["Couldn't find X. Install it, or set its full path in settings."]
@@ -397,7 +427,7 @@ flowchart TD
     C -- no --> D[the check picks the winner<br/>the log says why]
     C -- yes --> E["each judge: candidates as A, B… in a seeded shuffle<br/>'letter + confidence' → parseVote"]
     E --> F{ask twice?}
-    F -- yes --> G[same judge, reversed order<br/>different picks → abstains (position bias)]
+    F -- yes --> G["same judge, reversed order<br/>different picks → abstains (position bias)"]
     F -- no --> H
     G --> H["juryWinner: Borda, checker ranks all,<br/>judges' pick × confidence × weight (½ under 3.5 GB)<br/>no votes for own draft · ties → check score"]
     D --> I
@@ -419,7 +449,7 @@ State machine (`ReviewMachine`): `candidates → judging → hardening(0) → ha
 
 ## 17. Explain This for Me
 
-The sixth Services item. It accepts highlighted text, like the others, and also text and code files right-clicked in Finder (`NSSendFileTypes`). Only the files the user picked are read, up to `maxInputCharacters`, and nothing is written.
+The sixth Services item. It accepts highlighted text, like the others, and also any file or folder right-clicked in Finder (`NSSendFileTypes` includes `public.item`). Only what the user picked is read, up to `maxInputCharacters` in total, and nothing is written. Flows 19 to 22 show how each kind of item becomes text.
 
 ```mermaid
 sequenceDiagram
@@ -430,15 +460,15 @@ sequenceDiagram
     participant AD as AppDelegate
     participant P as ResultPanelController
 
-    U->>OS: Services → Explain This for Me (text, or files in Finder)
+    U->>OS: Services → Explain This for Me (text, or any files and folders in Finder)
     OS->>SP: explainThisForMe(pasteboard, userData, error)
     alt file URLs on the pasteboard
-        SP->>SP: explainInput(files:) → "File: name" + text, cut to 8,000 characters
-        alt not text, empty, a folder, or blocked by macOS
+        SP->>SP: explainInput(files:) → describeItem per item, sharing 8,000 characters: text, folder layout, database schema, document text, or file profile
+        alt gone, empty, or blocked by macOS
             SP->>AD: onFailure(error, files)
             AD->>U: FailurePanelController says why (Finder doesn't show a service's error string)
             opt blocked by macOS (EPERM or EACCES → protectedFile)
-                U->>AD: Choose File… → NSOpenPanel (picking the file is the consent macOS accepts)
+                U->>AD: Choose… → NSOpenPanel, files or folders (picking the item is the consent macOS accepts)
                 AD->>AD: explainInput(chosen files) → the dialog, or protectedFileHelp
             end
         end
@@ -466,7 +496,7 @@ flowchart TD
     B -- no --> C["answerFollowUp · system prompt: chatSystemPrompt(style:) + chatContext<br/>(newest turns ≤ 3,000 · start of the result ≤ 3,000 · highlighted text in the rest, ≤ 8,000 · total ≤ maxChatCharacters)<br/>prompt: the question alone"]
     C --> D["rewrite(question, …) · same generation and stop function as run(_:)"]
     D --> E[answer streams into the transcript]
-    E --> X{stopped? if not: isNonAnswer<br/>(apology, "can't answer" or "no information" in the first sentence,<br/>a context heading alone on its line, the result unchanged)<br/>or an earlier answer of 40+ characters repeated for a new question?}
+    E --> X{"stopped? if not: isNonAnswer<br/>(apology, 'can't answer' or 'no information' in the first sentence,<br/>a context heading alone on its line, the result unchanged)<br/>or an earlier answer of 40+ characters repeated for a new question?"}
     X -- yes --> Y["rewrite(question, …) again without the context · status says so"]
     Y --> F
     X -- no --> F{result}
@@ -477,3 +507,143 @@ flowchart TD
 ```
 
 The turns are kept in the dialog only. Closing it forgets them.
+
+## 19. Explain: what is this item?
+
+`describeItem` in `Sources/Core/ItemDescription.swift`. The answer comes from the item's contents, so a file's name can't mislead it. Each reader that can't cope falls through to the next, and the last one always has something to say.
+
+```mermaid
+flowchart TD
+    A(["A path from Finder or Choose…"]) --> B{"stat"}
+    B -->|"EPERM or EACCES"| P["protectedFile<br/>window offers Choose…"]
+    B -->|"missing"| U["unreadableFile"]
+    B -->|folder| F["describeFolder: flow 20"]
+    B -->|"pipe, socket or device"| S["Says what it is.<br/>Never read, so it can't hang"]
+    B -->|file| C["open, non-blocking,<br/>read the start"]
+    C -->|refused| P
+    C -->|"0 bytes"| E["emptyFile"]
+    C --> D{"SQLite header?"}
+    D -->|yes| DB["describeDatabase: flow 21"]
+    DB -->|"damaged or encrypted"| PL
+    D -->|no| PL{"bplist header?"}
+    PL -->|yes| PD["Decoded settings"]
+    PL -->|no| DOC{"%PDF-, or .rtf .doc .docx .odt?"}
+    DOC -->|"has text"| DT["Document text"]
+    DOC -->|"no, or no text"| T{"Text?<br/>UTF-8, UTF-16 with a mark,<br/>or an old single-byte encoding"}
+    T -->|yes| TT["The text"]
+    T -->|"only whitespace"| E
+    T -->|no| Z["fileProfile"]
+    Z --> Z1["Type from /usr/bin/file<br/>size, date, first bytes"]
+    Z1 --> Z2{"Archive signature?"}
+    Z2 -->|yes| Z3["Files inside, from tar -tf<br/>nothing unpacked"]
+    Z2 -->|no| Z4["Readable fragments<br/>from the start and the end"]
+```
+
+## 20. Explain: reading a folder
+
+`describeFolder`. Breadth first, so running out of time still leaves the top of the folder, which says the most. The description has three parts: a summary, the layout, and samples of the files that say what the folder is.
+
+```mermaid
+flowchart TD
+    A(["A folder"]) --> B{"List it"}
+    B -->|refused| P["protectedFile: Choose…"]
+    B -->|"nothing but .DS_Store"| E["emptyFile"]
+    B --> C["Walk breadth first with lstat"]
+    C --> D{"Each entry"}
+    D -->|"link"| D1["Listed as name -> target<br/>never followed"]
+    D -->|".git, node_modules, build…"| D2["Listed, contents not walked"]
+    D -->|"folder macOS blocks"| D3["Listed as blocked, walk continues"]
+    D -->|"other folder"| C
+    D -->|"file"| D4["Counted: size, type, date"]
+    C -->|"2 s or 20,000 entries"| S["Stopped early:<br/>the summary says so"]
+    D1 & D2 & D3 & D4 & S --> SUM["Summary: totals, common types,<br/>largest and newest files"]
+    SUM --> LAY["Layout: 30 entries per folder,<br/>levels drop from 5 until it fits"]
+    LAY --> PICK["Candidates at most two levels down, up to 1 MB:<br/>README, manifests and similar first, then newest"]
+    PICK --> SKIP{"Safe to open?"}
+    SKIP -->|"secret-looking name, online-only,<br/>or contains a private key"| NO["Name stays in the layout,<br/>contents stay out"]
+    SKIP -->|yes| YES["Start of the file, up to 4 files"]
+    NO & YES --> OUT(["Folder: name, then summary, layout and samples,<br/>cut to its share"])
+```
+
+## 21. Explain: reading a database
+
+`describeDatabase`. Any file with SQLite's header, whatever its name. The database isn't changed, and no files appear beside it.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant I as describeItem
+    participant D as describeDatabase
+    participant S as SQLite library
+
+    I->>D: path, name, size, limit
+    D->>S: open read-only with immutable=1
+    Note over D,S: No locks, journal or -wal files
+    D->>S: progress handler enforcing the time limits (3 s total)
+    D->>S: PRAGMA trusted_schema=OFF
+    D->>S: read sqlite_master
+    alt damaged or not really SQLite
+        S-->>D: error
+        D-->>I: nil, so the file goes to the next reader (flow 19)
+    else readable
+        S-->>D: tables, views, indexes, triggers
+        loop each table, 0.3 s per query
+            D->>S: SELECT COUNT(*)
+        end
+        Note over D: Biggest tables first
+        loop each table, until the limit is near
+            D->>S: PRAGMA table_info
+            D->>S: SELECT * LIMIT 3
+            Note over D: Secret-looking columns become (hidden), blobs become N-byte blob, values stop at 80 characters
+        end
+        D-->>I: Database: name, tables, columns, samples, views and triggers
+    end
+```
+
+## 22. Explain: several items at once
+
+`explainInput(files:)`. Items share the limit, so a big first file can't crowd out the rest, and one bad item doesn't lose the others.
+
+```mermaid
+flowchart TD
+    A(["Selection"]) --> B["First 20 items are described.<br/>Space is reserved to name the rest"]
+    B --> C["Next item's share:<br/>space left ÷ items left"]
+    C --> D{"describeItem"}
+    D -->|ok| E["Add its description.<br/>Unused space passes to later items"]
+    D -->|protectedFile| P(["Stop: window offers Choose…,<br/>which can grant the whole selection"])
+    D -->|"other failure, one item selected"| X(["Window says why"])
+    D -->|"other failure, several selected"| F["Add a note that it couldn't be read"]
+    E & F --> G{"More items?"}
+    G -->|yes| C
+    G -->|no| H{"Did any item work?"}
+    H -->|no| X
+    H -->|yes| I(["Everything joined, plus the names of<br/>items not looked at, within 8,000 characters"])
+```
+
+## 23. Privacy: where your data goes
+
+Everything stays on this Mac. The dashed line is what the app doesn't have: `testNoNetworkCode` fails the build if networking APIs or URLs appear in `Sources/`, or if the worker script has network or download calls.
+
+```mermaid
+flowchart LR
+    subgraph Mac["This Mac"]
+        A["Highlighted text"] --> P["Prompt Menu"]
+        B["Files and folders you chose,<br/>read-only"] --> P
+        P -->|"one-shot runner: one command-line argument"| R["Runner, exits after each run"]
+        P -->|"kept-loaded MLX: private pipe"| W["Worker, exits with the app"]
+        R & W --> D["Dialog: versions, chat, Review Log<br/>in memory, gone on close"]
+        P -->|"settings only, never your text"| S[("UserDefaults")]
+        M[("Models already on disk")] --> R & W
+    end
+    P -. "no network code" .-x I(("Internet"))
+```
+
+| What | Where it goes | How long it lasts |
+|---|---|---|
+| Highlighted text | The app, then the model runner | Until the dialog closes |
+| Chosen files and folders | Read-only, sampled into the same input | Until the dialog closes. The originals aren't changed |
+| The model's output, versions, chat, Review Log | The dialog's memory | Until the dialog closes |
+| Settings (runner, model, prompts) | `UserDefaults`, domain `local.promptmenu` | Until you change them |
+| Anything sent to a server by Prompt Menu | Nothing: there's no code that could | Not applicable |
+
+The limits of these promises, such as a command-line argument being visible to other processes under your account while a run is active, are listed in the [README's privacy section](../README.md#privacy).
