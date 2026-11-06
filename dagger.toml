@@ -1,0 +1,12 @@
+[modules.dang-sdk]
+source = "github.com/dagger/dang-sdk"
+
+[sdks.dang]
+module = "dang-sdk"
+
+[modules.checks]
+source = ".dagger/modules/checks"
+
+[sdks.dang.scopes.".dagger/modules/checks"]
+is-module = true
+name = "checks"

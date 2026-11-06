@@ -1,0 +1,102 @@
+"""
+Linux-side checks for Prompt Menu.
+
+Full macOS `scripts/test.sh` / `scripts/build.sh` still need a Mac runner
+(GitHub Actions macos-* or your laptop). These checks catch the portable
+guardrails that must never regress.
+"""
+type Checks {
+  """
+  Alpine image with Python and bash for portable validation.
+  """
+  base: Container! = container
+    .from("python:3.12-alpine")
+    .withExec(["apk", "add", "--no-cache", "bash", "grep", "findutils"])
+
+  """
+  Mount the workspace files needed by the portable checks.
+  """
+  let work(ws: Workspace!): Container! {
+    base
+      .withWorkdir("/work")
+      .withMountedDirectory(
+        ".",
+        ws.directory(
+          ".",
+          include: [
+            "Sources/**",
+            "Resources/**",
+            "scripts/**",
+            "Tests/GuardrailTests.swift",
+          ],
+        ),
+      )
+  }
+
+  """
+  Resources/patterns.json must be valid JSON.
+  """
+  pub patternsJson(ws: Workspace!): Void @check {
+    work(ws)
+      .withExec([
+        "python",
+        "-c",
+        "import json,sys; json.load(open('Resources/patterns.json')); print('patterns.json OK')",
+      ])
+      .sync
+    null
+  }
+
+  """
+  Resources/mlx_worker.py must compile.
+  """
+  pub mlxWorker(ws: Workspace!): Void @check {
+    work(ws)
+      .withExec(["python", "-m", "py_compile", "Resources/mlx_worker.py"])
+      .sync
+    null
+  }
+
+  """
+  Sources/ and Resources/*.py must not contain network APIs.
+  Mirrors Tests/GuardrailTests.swift testNoNetworkCode.
+  """
+  pub noNetworkCode(ws: Workspace!): Void @check {
+    work(ws)
+      .withExec([
+        "sh",
+        "-c",
+        ```
+        set -eu
+        forbidden='URLSession|URLRequest|NWConnection|NWListener|import Network|CFSocket|NSURLConnection|http://|https://|HF_HUB_ENABLE'
+        if grep -REn "$forbidden" Sources Resources/*.py 2>/dev/null; then
+          echo "forbidden network symbols found" >&2
+          exit 1
+        fi
+        echo "no network code OK"
+        ```,
+      ])
+      .sync
+    null
+  }
+
+  """
+  Shell scripts must pass bash syntax check.
+  """
+  pub scriptsSyntax(ws: Workspace!): Void @check {
+    work(ws)
+      .withExec([
+        "sh",
+        "-c",
+        ```
+        set -eu
+        for f in scripts/*.sh; do
+          bash -n "$f"
+          echo "ok $f"
+        done
+        ```,
+      ])
+      .sync
+    null
+  }
+}
